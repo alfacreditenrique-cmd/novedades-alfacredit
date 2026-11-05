@@ -231,6 +231,8 @@ async def websocket_status(websocket: WebSocket):
 
 # --- RUTAS DE NAVEGACIÓN Y VISTAS HTML ---
 
+@app.get("/api/index.py", response_class=HTMLResponse)
+@app.get("/api", response_class=HTMLResponse)
 @app.get("/", response_class=HTMLResponse)
 async def root(request: Request):
     user = get_current_user(request)
