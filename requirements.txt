@@ -6,3 +6,4 @@ pydantic>=2.0.0
 python-multipart>=0.0.6
 requests>=2.31.0
 httpx>=0.24.0
+libsql-client>=0.3.0

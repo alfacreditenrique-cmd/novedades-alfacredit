@@ -789,6 +789,114 @@ async def api_email_sync(request: Request, user: dict = Depends(require_auth)):
     await ws_manager.broadcast_status({"type": "STATUS_UPDATE", "data": nuevo_estado})
     return res
 
+@app.post("/api/email/confirm-secondary")
+async def api_confirm_secondary_email(
+    request: Request,
+    tipo: Optional[str] = Form("auto"),
+    notas: Optional[str] = Form(""),
+    user: dict = Depends(require_auth)
+):
+    """
+    Confirmación secundaria inmediata de recepción de correo para Brandon / Administrador.
+    Permite validar que el correo ya cayó sin depender de la conexión o comprobación automática IMAP.
+    """
+    if user["rol"] not in ["admin", "brandon"]:
+        raise HTTPException(
+            status_code=403, 
+            detail="Acceso restringido: Solo Administrador y Brandon pueden confirmar manualmente la recepción secundaria de correos."
+        )
+
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+    ciclo = c.fetchone()
+    if not ciclo:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No se encontró un ciclo semanal activo.")
+
+    ciclo_id = ciclo["id"]
+    fecha_ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Determinar qué paso confirmar
+    target = (tipo or "auto").strip().lower()
+    if target == "auto":
+        c.execute("SELECT id FROM eventos_brandon WHERE ciclo_id = ?", (ciclo_id,))
+        ev_b = c.fetchone()
+        if not ev_b:
+            target = "solicitud_brandon"
+        else:
+            target = "comprobante_dania"
+
+    mensaje_exito = ""
+    if target == "solicitud_brandon":
+        c.execute("SELECT id FROM eventos_brandon WHERE ciclo_id = ?", (ciclo_id,))
+        ev_b = c.fetchone()
+        if not ev_b:
+            asunto = f"Solicitud de Combustible - Corte {ciclo['fecha_sabado']} (Confirmación Secundaria Manual)"
+            destinatario = "dania.tesoreria@alfacreditsa.com"
+            cuerpo = notas or "Confirmación manual de recepción de correo de solicitud de combustible."
+            c.execute('''
+            INSERT INTO eventos_brandon (ciclo_id, usuario_id, correo_destinatario, asunto, cuerpo, fecha_envio, metodo)
+            VALUES (?, ?, ?, ?, ?, ?, 'MANUAL_SECUNDARIO')
+            ''', (ciclo_id, user["id"], destinatario, asunto, cuerpo, fecha_ahora))
+
+            c.execute('''
+            UPDATE ciclos_semanales 
+            SET estado_general = 'FASE_3_DANIA' 
+            WHERE id = ? AND estado_general IN ('FASE_1_GERENTES', 'FASE_2_BRANDON')
+            ''', (ciclo_id,))
+            conn.commit()
+            mensaje_exito = "Solicitud de Combustible confirmada exitosamente. El ciclo avanzó a Fase 3 (Dania)."
+        else:
+            mensaje_exito = "La solicitud de combustible ya había sido registrada previamente."
+
+    elif target == "comprobante_dania":
+        c.execute("SELECT id FROM eventos_dania WHERE ciclo_id = ?", (ciclo_id,))
+        ev_d = c.fetchone()
+        if not ev_d:
+            c.execute("SELECT SUM(suma_neto) as total_neto FROM reportes_sucursales WHERE ciclo_id = ?", (ciclo_id,))
+            tot_row = c.fetchone()
+            monto = float(tot_row["total_neto"] or 0.0) if tot_row else 0.0
+            ref = f"CONF-MANUAL-{int(datetime.now().timestamp())}"
+            nota_final = notas or "Confirmación secundaria de correo: comprobante recibido y validado manualmente."
+            
+            c.execute('''
+            INSERT INTO eventos_dania (ciclo_id, usuario_id, monto_depositado, numero_referencia, fecha_deposito, metodo, notas)
+            VALUES (?, ?, ?, ?, ?, 'MANUAL_SECUNDARIO', ?)
+            ''', (ciclo_id, user["id"], monto, ref, fecha_ahora, nota_final))
+
+            c.execute('''
+            UPDATE ciclos_semanales 
+            SET estado_general = 'FASE_4_COMPLETADO', total_combustible_aprobado = ?, cerrado_en = ?
+            WHERE id = ?
+            ''', (monto, fecha_ahora, ciclo_id))
+            conn.commit()
+            mensaje_exito = f"Comprobante de depósito de Dania confirmado manualmente por C$ {monto:,.2f}. Proceso semanal completado al 100%."
+        else:
+            mensaje_exito = "El comprobante de depósito ya había sido registrado para este ciclo."
+    else:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Tipo de confirmación no válido: {tipo}")
+
+    conn.close()
+
+    log_audit(
+        user["email"], user["nombre"], user["rol"],
+        "CONFIRMACION_MANUAL_CORREO_SECUNDARIA",
+        f"Confirmación secundaria activada por usuario: {mensaje_exito}",
+        ip_address=request.client.host
+    )
+
+    nuevo_estado = obtener_estado_completo_pipeline()
+    await ws_manager.broadcast_status({"type": "STATUS_UPDATE", "data": nuevo_estado})
+
+    return {
+        "success": True,
+        "message": mensaje_exito,
+        "nuevo_estado": nuevo_estado
+    }
+
+
 @app.post("/api/email/test")
 async def api_email_test(payload: dict, user: dict = Depends(require_auth)):
     return test_imap_connection(

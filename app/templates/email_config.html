@@ -15,10 +15,16 @@
             <p class="text-xs text-slate-500">Configura la conexión segura para estudiar y detectar automáticamente cuando Brandon envía la solicitud o cuando Dania envía el comprobante</p>
         </div>
 
-        <button type="button" onclick="sincronizarCorreo()" class="px-4 py-2 bg-[#154360] hover:bg-[#0f2d42] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-            <span>Escanear Correo Ahora</span>
-        </button>
+        <div class="flex items-center flex-wrap gap-2">
+            <button type="button" onclick="confirmarCorreoSecundario()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1" title="Confirmación manual si el escaneo IMAP no responde">
+                <i data-lucide="check-check" class="w-4 h-4"></i>
+                <span>Confirmar Recepción Manual</span>
+            </button>
+            <button type="button" onclick="sincronizarCorreo()" class="px-4 py-2 bg-[#154360] hover:bg-[#0f2d42] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                <span>Escanear Correo Ahora</span>
+            </button>
+        </div>
     </div>
 
     <!-- FORMULARIO DE CONFIGURACIÓN -->

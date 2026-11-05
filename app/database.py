@@ -26,8 +26,128 @@ def hash_password(password: str) -> str:
     salt = "alfacredit_salt_2026_!"
     return hashlib.sha256((salt + password).encode('utf-8')).hexdigest()
 
+class LibsqlRow(dict):
+    """
+    Wrapper compatible con sqlite3.Row:
+    Permite acceso por clave r['col'], por índice r[0], dict(r), r.get(), r.keys().
+    """
+    def __init__(self, columns, values):
+        super().__init__(zip(columns, values))
+        self._columns = tuple(columns)
+        self._values = tuple(values)
+
+    def __getitem__(self, item):
+        if isinstance(item, int):
+            return self._values[item]
+        return super().__getitem__(item)
+
+    def keys(self):
+        return self._columns
+
+
+class LibsqlCursor:
+    def __init__(self, client):
+        self._client = client
+        self._rows = []
+        self._columns = ()
+        self._idx = 0
+        self.lastrowid = None
+        self.rowcount = 0
+
+    def execute(self, sql, params=None):
+        clean_sql = sql.strip()
+        # Ignorar PRAGMAs locales que no aplican a Turso en la nube
+        if clean_sql.upper().startswith("PRAGMA JOURNAL_MODE"):
+            self._rows = []
+            self._columns = ()
+            self.rowcount = 0
+            self.lastrowid = 0
+            return self
+
+        args = list(params) if params is not None else []
+        res = self._client.execute(clean_sql, args)
+        self._columns = tuple(res.columns) if hasattr(res, 'columns') and res.columns else ()
+        raw_rows = res.rows if hasattr(res, 'rows') else []
+        self._rows = [LibsqlRow(self._columns, r) for r in raw_rows]
+        self._idx = 0
+        self.lastrowid = getattr(res, 'last_insert_rowid', None)
+        self.rowcount = getattr(res, 'rows_affected', len(self._rows))
+        return self
+
+    def fetchone(self):
+        if self._idx < len(self._rows):
+            r = self._rows[self._idx]
+            self._idx += 1
+            return r
+        return None
+
+    def fetchall(self):
+        remaining = self._rows[self._idx:]
+        self._idx = len(self._rows)
+        return remaining
+
+    def fetchmany(self, size=None):
+        if size is None:
+            size = 1
+        end = min(self._idx + size, len(self._rows))
+        subset = self._rows[self._idx:end]
+        self._idx = end
+        return subset
+
+    def close(self):
+        pass
+
+
+class LibsqlConnection:
+    def __init__(self, client):
+        self._client = client
+        self.row_factory = None
+
+    def cursor(self):
+        return LibsqlCursor(self._client)
+
+    def execute(self, sql, params=None):
+        cur = self.cursor()
+        return cur.execute(sql, params)
+
+    def commit(self):
+        # Libsql sobre HTTP auto-confirma sentencias
+        pass
+
+    def rollback(self):
+        pass
+
+    def close(self):
+        try:
+            self._client.close()
+        except Exception:
+            pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+def is_using_turso() -> bool:
+    """Verifica si la base de datos configurada es Turso libSQL en la nube"""
+    return bool(os.environ.get("TURSO_DATABASE_URL", "").strip())
+
+
 def get_db_connection():
-    """Obtiene una conexión a la base de datos con row_factory para diccionarios y journal_mode según entorno"""
+    """Obtiene una conexión a la base de datos (Turso libSQL en la nube o SQLite local)"""
+    turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
+    turso_token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
+
+    if turso_url:
+        try:
+            import libsql_client
+            client = libsql_client.create_client_sync(url=turso_url, auth_token=turso_token or None)
+            return LibsqlConnection(client)
+        except Exception as e:
+            print(f"Aviso: no se pudo conectar a Turso ({turso_url}): {e}. Usando fallback local.")
+
     db_dir = os.path.dirname(DB_PATH)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
@@ -253,15 +373,86 @@ def init_db():
 
     conn.commit()
 
-    # --- DATOS SEMILLA CON DOMINIO OFICIAL @ALFACREDITSA.COM ---
+    # --- MIGRACIÓN: UNIFICACIÓN DE MANAGUA BOLONIA Y MANAGUA NORTE EN UNA SOLA SUCURSAL 'MANAGUA' ---
+    c.execute("SELECT id, nombre, email_gerente FROM sucursales WHERE nombre IN ('Managua Bolonia', 'Managua Norte', 'Managua')")
+    m_rows = {row["nombre"]: row["id"] for row in c.fetchall()}
+
+    if "Managua Bolonia" in m_rows or "Managua Norte" in m_rows:
+        # Si 'Managua' aún no existe, renombramos 'Managua Bolonia' o 'Managua Norte' a 'Managua'
+        if "Managua" not in m_rows:
+            if "Managua Bolonia" in m_rows:
+                target_id = m_rows["Managua Bolonia"]
+                c.execute("UPDATE sucursales SET nombre = 'Managua', email_gerente = 'gerente.managua@alfacreditsa.com', telefono = '2266-0003' WHERE id = ?", (target_id,))
+                m_rows["Managua"] = target_id
+                del m_rows["Managua Bolonia"]
+            else:
+                target_id = m_rows["Managua Norte"]
+                c.execute("UPDATE sucursales SET nombre = 'Managua', email_gerente = 'gerente.managua@alfacreditsa.com', telefono = '2266-0003' WHERE id = ?", (target_id,))
+                m_rows["Managua"] = target_id
+                del m_rows["Managua Norte"]
+
+        managua_id = m_rows["Managua"]
+
+        # Obtener o crear usuario Managua
+        c.execute("SELECT id FROM usuarios WHERE email = 'gerente.managua@alfacreditsa.com'")
+        u_managua = c.fetchone()
+        if not u_managua:
+            c.execute("SELECT id FROM usuarios WHERE email = 'gerente.bolonia@alfacreditsa.com'")
+            u_bol = c.fetchone()
+            if u_bol:
+                c.execute("UPDATE usuarios SET email = 'gerente.managua@alfacreditsa.com', nombre = 'Gerente Managua', sucursal_id = ? WHERE id = ?", (managua_id, u_bol["id"]))
+                managua_uid = u_bol["id"]
+            else:
+                c.execute("SELECT id FROM usuarios WHERE email = 'gerente.managuanorte@alfacreditsa.com'")
+                u_nor = c.fetchone()
+                if u_nor:
+                    c.execute("UPDATE usuarios SET email = 'gerente.managua@alfacreditsa.com', nombre = 'Gerente Managua', sucursal_id = ? WHERE id = ?", (managua_id, u_nor["id"]))
+                    managua_uid = u_nor["id"]
+                else:
+                    c.execute("INSERT OR IGNORE INTO usuarios (email, password_hash, nombre, rol, sucursal_id) VALUES ('gerente.managua@alfacreditsa.com', ?, 'Gerente Managua', 'gerente', ?)", (p_hash, managua_id))
+                    managua_uid = c.lastrowid
+        else:
+            managua_uid = u_managua["id"]
+            c.execute("UPDATE usuarios SET sucursal_id = ? WHERE id = ?", (managua_id, managua_uid))
+
+        # Migrar dependencias de las sucursales viejas a Managua
+        for old_nom, old_id in list(m_rows.items()):
+            if old_nom != "Managua":
+                # 1. Colaboradores
+                c.execute("UPDATE colaboradores SET sucursal_id = ? WHERE sucursal_id = ?", (managua_id, old_id))
+                # 2. Reportes por ciclo: evitar colisión con UNIQUE(ciclo_id, sucursal_id)
+                c.execute("SELECT ciclo_id, id FROM reportes_sucursales WHERE sucursal_id = ?", (old_id,))
+                for rep_old in c.fetchall():
+                    c.execute("SELECT id FROM reportes_sucursales WHERE ciclo_id = ? AND sucursal_id = ?", (rep_old["ciclo_id"], managua_id))
+                    existing_rep = c.fetchone()
+                    if existing_rep:
+                        c.execute("UPDATE detalle_novedades SET reporte_id = ? WHERE reporte_id = ?", (existing_rep["id"], rep_old["id"]))
+                        c.execute("DELETE FROM reportes_sucursales WHERE id = ?", (rep_old["id"],))
+                    else:
+                        c.execute("UPDATE reportes_sucursales SET sucursal_id = ?, usuario_id = ? WHERE id = ?", (managua_id, managua_uid, rep_old["id"]))
+                # 3. Reasignar cualquier referencia de usuario viejo a managua_uid
+                c.execute("SELECT id FROM usuarios WHERE sucursal_id = ? OR email IN ('gerente.bolonia@alfacreditsa.com', 'gerente.managuanorte@alfacreditsa.com')", (old_id,))
+                for old_u in c.fetchall():
+                    if old_u["id"] != managua_uid:
+                        c.execute("UPDATE reportes_sucursales SET usuario_id = ? WHERE usuario_id = ?", (managua_uid, old_u["id"]))
+                        c.execute("UPDATE recuperacion_tokens SET usuario_id = ? WHERE usuario_id = ?", (managua_uid, old_u["id"]))
+                        c.execute("UPDATE eventos_brandon SET usuario_id = ? WHERE usuario_id = ?", (managua_uid, old_u["id"]))
+                        c.execute("UPDATE eventos_dania SET usuario_id = ? WHERE usuario_id = ?", (managua_uid, old_u["id"]))
+                        c.execute("DELETE FROM usuarios WHERE id = ?", (old_u["id"],))
+
+                # 4. Eliminar la sucursal obsoleta
+                c.execute("DELETE FROM sucursales WHERE id = ?", (old_id,))
+
+        conn.commit()
+
+    # --- DATOS SEMILLA CON DOMINIO OFICIAL @ALFACREDITSA.COM (8 SUCURSALES) ---
     p_hash = hash_password("1234")
 
-    # Sucursales de AlfaCredit S.A.
+    # Sucursales de AlfaCredit S.A. (Total 8 Sucursales Oficiales)
     sucursales_data = [
         ("Estelí", "gerente.esteli@alfacreditsa.com", "2713-0001"),
         ("Masaya", "gerente.masaya@alfacreditsa.com", "2522-0002"),
-        ("Managua Bolonia", "gerente.bolonia@alfacreditsa.com", "2266-0003"),
-        ("Managua Norte", "gerente.managuanorte@alfacreditsa.com", "2255-0004"),
+        ("Managua", "gerente.managua@alfacreditsa.com", "2266-0003"),
         ("Sébaco", "gerente.sebaco@alfacreditsa.com", "2775-0005"),
         ("Jinotepe", "gerente.jinotepe@alfacreditsa.com", "2532-0006"),
         ("Juigalpa", "gerente.juigalpa@alfacreditsa.com", "2512-0007"),
@@ -290,11 +481,10 @@ def init_db():
         ("adquisicionesylogistica@alfacreditsa.com", p_hash, "Brandon (Coordinador Combustible)", "brandon", None),
         # Yeser (Jefe de Crédito / Supervisión de Gerentes)
         ("yeser@alfacreditsa.com", p_hash, "Yeser (Jefe de Crédito)", "jefe_credito", None),
-        # Gerentes de Sucursales
+        # Gerentes de Sucursales (8 Gerentes)
         ("gerente.esteli@alfacreditsa.com", p_hash, "Gerente Estelí", "gerente", suc_map.get("Estelí")),
         ("gerente.masaya@alfacreditsa.com", p_hash, "Gerente Masaya", "gerente", suc_map.get("Masaya")),
-        ("gerente.bolonia@alfacreditsa.com", p_hash, "Gerente Managua Bolonia", "gerente", suc_map.get("Managua Bolonia")),
-        ("gerente.managuanorte@alfacreditsa.com", p_hash, "Gerente Managua Norte", "gerente", suc_map.get("Managua Norte")),
+        ("gerente.managua@alfacreditsa.com", p_hash, "Gerente Managua", "gerente", suc_map.get("Managua")),
         ("gerente.sebaco@alfacreditsa.com", p_hash, "Gerente Sébaco", "gerente", suc_map.get("Sébaco")),
         ("gerente.jinotepe@alfacreditsa.com", p_hash, "Gerente Jinotepe", "gerente", suc_map.get("Jinotepe")),
         ("gerente.juigalpa@alfacreditsa.com", p_hash, "Gerente Juigalpa", "gerente", suc_map.get("Juigalpa")),
@@ -311,8 +501,11 @@ def init_db():
         "dania.tesoreria@alfacredit.com": "dania.tesoreria@alfacreditsa.com",
         "gerenteesteli7@gmail.com": "gerente.esteli@alfacreditsa.com",
         "gerentemasaya25@gmail.com": "gerente.masaya@alfacreditsa.com",
-        "gerentemanaguabolonia@gmail.com": "gerente.bolonia@alfacreditsa.com",
-        "gerentemanaguanorte@gmail.com": "gerente.managuanorte@alfacreditsa.com",
+        "gerentemanagua@gmail.com": "gerente.managua@alfacreditsa.com",
+        "gerentemanaguabolonia@gmail.com": "gerente.managua@alfacreditsa.com",
+        "gerentemanaguanorte@gmail.com": "gerente.managua@alfacreditsa.com",
+        "gerente.bolonia@alfacreditsa.com": "gerente.managua@alfacreditsa.com",
+        "gerente.managuanorte@alfacreditsa.com": "gerente.managua@alfacreditsa.com",
         "gerentesebaco@gmail.com": "gerente.sebaco@alfacreditsa.com",
         "gerentejinotepe@gmail.com": "gerente.jinotepe@alfacreditsa.com",
         "gerentejuigalpa@gmail.com": "gerente.juigalpa@alfacreditsa.com",
@@ -345,8 +538,10 @@ def init_db():
             ("RESP. OPERACIONES", 600.0),
             ("CONSERJE", 300.0)
         ]
-        for email_g, suc_id in suc_map.items():
-            suc_nom = [s[0] for s in sucursales_data if s[1] == email_g][0]
+        for suc_nom, email_g, _ in sucursales_data:
+            suc_id = suc_map.get(suc_nom)
+            if not suc_id:
+                continue
             for cargo, comb in cargos_base:
                 nom_ej = f"Colaborador {cargo.title()} - {suc_nom}"
                 c.execute('''

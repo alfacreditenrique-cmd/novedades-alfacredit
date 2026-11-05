@@ -15,8 +15,8 @@ def reset_to_fresh_real_state():
     """
     Limpia cualquier dato de simulación o prueba previa y deja la plataforma
     en un estado 100% real y limpio listo para operación:
-    - Ciclo activo en Fase 1 (Esperando a los 9 Gerentes).
-    - 9 Sucursales en estado PENDIENTE con su plantilla de colaboradores lista y casillas en blanco.
+    - Ciclo activo en Fase 1 (Esperando a los 8 Gerentes).
+    - 8 Sucursales en estado PENDIENTE con su plantilla de colaboradores lista y casillas en blanco.
     - Sin solicitudes enviadas de Brandon ni comprobantes previos.
     - Brandon y Administradores en modo monitoreo en tiempo real.
     """
@@ -94,7 +94,7 @@ def reset_to_fresh_real_state():
 
     print("✅ Plataforma reiniciada con éxito en ESTADO REAL DE PRODUCCIÓN:")
     print("   - Ciclo semanal activo en Fase 1 (Pendiente por Gerentes).")
-    print("   - 9 Sucursales con todas sus novedades en blanco listas para ser llenadas por cada Gerente.")
+    print("   - 8 Sucursales con todas sus novedades en blanco listas para ser llenadas por cada Gerente.")
     print("   - Brandon y Administrador listos para monitorear la barra de estado en vivo.")
 
 if __name__ == "__main__":

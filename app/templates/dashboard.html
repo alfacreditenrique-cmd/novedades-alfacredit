@@ -22,6 +22,13 @@
                 <span>Sincronizar Correo</span>
             </button>
 
+            {% if user.rol in ['admin', 'brandon'] %}
+            <button onclick="confirmarCorreoSecundario()" class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg flex items-center space-x-1 transition shadow-sm" title="Confirmar manualmente recepción de correo si la comprobación automática no responde">
+                <i data-lucide="check-check" class="w-4 h-4"></i>
+                <span>Confirmar Correo (Secundario)</span>
+            </button>
+            {% endif %}
+
             <a href="/api/export/excel/consolidado" class="px-3 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg flex items-center space-x-1 transition shadow-sm">
                 <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
                 <span>Descargar Consolidado Excel</span>
@@ -60,7 +67,7 @@
                         {{ estado.conteo_enviadas }}/{{ estado.total_sucursales }} Sucursales
                     </span>
                     <span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-bold {% if estado.conteo_enviadas == estado.total_sucursales %}bg-green-100 text-green-700{% else %}bg-amber-100 text-amber-700{% endif %}">
-                        {% if estado.conteo_enviadas == estado.total_sucursales %}Completado (9/9){% else %}En Proceso{% endif %}
+                        {% if estado.conteo_enviadas == estado.total_sucursales %}Completado ({{ estado.total_sucursales }}/{{ estado.total_sucursales }}){% else %}En Proceso{% endif %}
                     </span>
                 </div>
             </div>

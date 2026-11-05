@@ -156,11 +156,11 @@ def test_all():
     assert dania_user is None
     print("✅ Confirmado: Dania no tiene cuenta de acceso web (su confirmación se escanea del correo de Brandon)")
 
-    # 8. VERIFICAR ESTADO EN LIMPIO (0/9 ENVIADAS, FASE 1)
+    # 8. VERIFICAR ESTADO EN LIMPIO (0/8 ENVIADAS, FASE 1)
     st = obtener_estado_completo_pipeline()
     assert st["fase_actual"] == 1
     assert st["conteo_enviadas"] == 0
-    assert st["total_sucursales"] == 9
+    assert st["total_sucursales"] == 8
     print(f"✅ Estado del pipeline en limpio verificado: {st['conteo_enviadas']}/{st['total_sucursales']} enviadas (Fase 1)")
 
     print("\n🎉 VALIDACIÓN COMPLETA: TODOS LOS SISTEMAS, PRIVACIDADES, CORREOS @ALFACREDITSA.COM Y RECUPERACIÓN FUNCIONAN AL 100%")

@@ -458,8 +458,127 @@ async function restaurarRespaldo(filename) {
     }
 }
 
+// ==========================================
+// MODO OSCURO (DARK MODE) CORPORATIVO
+// ==========================================
+function initTheme() {
+    const isDark = document.documentElement.classList.contains("dark");
+    const darkIcon = document.getElementById("theme-toggle-dark-icon");
+    const lightIcon = document.getElementById("theme-toggle-light-icon");
+    if (darkIcon && lightIcon) {
+        if (isDark) {
+            darkIcon.classList.add("hidden");
+            lightIcon.classList.remove("hidden");
+        } else {
+            lightIcon.classList.add("hidden");
+            darkIcon.classList.remove("hidden");
+        }
+    }
+}
+
+function toggleDarkMode() {
+    const isDark = document.documentElement.classList.contains("dark");
+    if (isDark) {
+        document.documentElement.classList.remove("dark");
+        localStorage.setItem("alfa_theme", "light");
+    } else {
+        document.documentElement.classList.add("dark");
+        localStorage.setItem("alfa_theme", "dark");
+    }
+    initTheme();
+    if (window.lucide) {
+        lucide.createIcons();
+    }
+}
+
+// ==========================================
+// CONFIRMACIÓN SECUNDARIA DE CORREO (MANUAL)
+// ==========================================
+async function confirmarCorreoSecundario() {
+    const { value: formValues } = await Swal.fire({
+        title: "Confirmación Secundaria de Correo",
+        html: `
+            <div class="text-left text-xs space-y-3">
+                <p class="text-slate-600 dark:text-slate-300 leading-relaxed">
+                    Si el correo ya cayó pero la comprobación automática IMAP falló o no se puede conectar, usa esta opción para avanzar el registro inmediatamente de manera secundaria.
+                </p>
+                <div>
+                    <label class="block font-bold text-slate-700 dark:text-slate-200 uppercase mb-1">Paso a Confirmar:</label>
+                    <select id="swal-correo-tipo" class="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white">
+                        <option value="auto">Detección automática (Paso actual pendiente)</option>
+                        <option value="solicitud_brandon">Solicitud de Combustible de Brandon (Fase 2 &rarr; 3)</option>
+                        <option value="comprobante_dania">Comprobante de Depósito de Dania (Fase 3 &rarr; 4)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 dark:text-slate-200 uppercase mb-1">Nota / Referencia (Opcional):</label>
+                    <input id="swal-correo-nota" type="text" placeholder="Ej: Correo verificado directamente en Outlook corporativo" class="w-full border border-slate-300 dark:border-slate-600 rounded p-2 text-xs bg-white dark:bg-slate-800 text-slate-800 dark:text-white">
+                </div>
+            </div>
+        `,
+        icon: "question",
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: '<i class="w-4 h-4 inline-block mr-1"></i> Confirmar Recepción',
+        cancelButtonText: "Cancelar",
+        confirmButtonColor: "#d97706",
+        preConfirm: () => {
+            return {
+                tipo: document.getElementById("swal-correo-tipo").value,
+                notas: document.getElementById("swal-correo-nota").value
+            };
+        }
+    });
+
+    if (!formValues) return;
+
+    Swal.fire({
+        title: "Confirmando correo...",
+        text: "Registrando evento de manera secundaria y actualizando estado",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const formData = new FormData();
+        formData.append("tipo", formValues.tipo);
+        formData.append("notas", formValues.notas);
+
+        const res = await fetch("/api/email/confirm-secondary", {
+            method: "POST",
+            body: formData
+        });
+
+        const data = await res.json();
+        if (data.success) {
+            Swal.fire({
+                icon: "success",
+                title: "¡Correo Confirmado!",
+                text: data.message,
+                confirmButtonColor: "#154360"
+            }).then(() => location.reload());
+        } else {
+            Swal.fire({
+                icon: "error",
+                title: "Error al Confirmar",
+                text: data.detail || data.message || "No se pudo registrar la confirmación secundaria.",
+                confirmButtonColor: "#154360"
+            });
+        }
+    } catch (e) {
+        Swal.fire({
+            icon: "error",
+            title: "Error de Red",
+            text: "Ocurrió un error al contactar el servidor: " + e,
+            confirmButtonColor: "#154360"
+        });
+    }
+}
+
 // INICIAR AL CARGAR
 document.addEventListener("DOMContentLoaded", () => {
+    initTheme();
     initWebSocket();
     recalcularGranTotal();
 });
+

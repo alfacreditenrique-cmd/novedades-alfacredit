@@ -227,3 +227,144 @@ body {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0,0,0,0.06);
 }
+
+/* ===================================================
+   MODO OSCURO / DARK MODE CORPORATIVO ALFACREDIT S.A.
+   =================================================== */
+html.dark {
+  color-scheme: dark;
+}
+
+html.dark body {
+  background-color: #0b1120 !important;
+  color: #e2e8f0 !important;
+}
+
+/* Contenedores y Cards en Modo Oscuro */
+html.dark .bg-white {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #0f172a !important;
+}
+
+html.dark .bg-slate-100 {
+  background-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+html.dark .border-slate-200,
+html.dark .border-slate-300,
+html.dark .border-gray-200,
+html.dark .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+html.dark .border-slate-100 {
+  border-color: #1e293b !important;
+}
+
+/* Textos */
+html.dark .text-slate-800,
+html.dark .text-slate-700,
+html.dark .text-gray-800,
+html.dark .text-gray-700 {
+  color: #f1f5f9 !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-slate-400,
+html.dark .text-gray-500,
+html.dark .text-gray-400 {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-[#154360] {
+  color: #38bdf8 !important;
+}
+
+/* Stepper y KPIs */
+html.dark .stepper-container,
+html.dark .kpi-card {
+  background: #1e293b !important;
+  border-color: #334155 !important;
+  color: #f1f5f9 !important;
+}
+
+html.dark .step-circle {
+  background-color: #0f172a !important;
+  border-color: #475569 !important;
+  color: #94a3b8 !important;
+}
+
+html.dark .step-item.active .step-circle {
+  border-color: var(--alfa-orange) !important;
+  background-color: #451a03 !important;
+  color: #fb923c !important;
+}
+
+html.dark .step-item.completed .step-circle {
+  border-color: var(--alfa-green) !important;
+  background-color: var(--alfa-green) !important;
+  color: #ffffff !important;
+}
+
+/* Inputs, Selects y Tablas */
+html.dark input[type="text"],
+html.dark input[type="password"],
+html.dark input[type="email"],
+html.dark input[type="number"],
+html.dark select,
+html.dark textarea {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+html.dark tr:hover {
+  background-color: #334155/50 !important;
+}
+
+html.dark .novedad-select {
+  background-color: #0f172a !important;
+  color: #f8fafc !important;
+  border-color: #475569 !important;
+}
+
+html.dark .novedad-select.deduccion {
+  background-color: #450a0a !important;
+  color: #fca5a5 !important;
+  border-color: #7f1d1d !important;
+}
+
+html.dark .novedad-select.adicion {
+  background-color: #052e16 !important;
+  color: #86efac !important;
+  border-color: #14532d !important;
+}
+
+html.dark .combustible-input {
+  background-color: #064e3b !important;
+  color: #6ee7b7 !important;
+  border-color: #047857 !important;
+}
+
+html.dark .display-neto {
+  color: #34d399 !important;
+}
+
+html.dark .bg-orange-50\/40 {
+  background-color: rgba(124, 45, 18, 0.25) !important;
+}
+
+html.dark .bg-green-50\/40 {
+  background-color: rgba(20, 83, 45, 0.25) !important;
+}
+
+html.dark footer {
+  background-color: #0b1120 !important;
+  border-color: #1e293b !important;
+}
+

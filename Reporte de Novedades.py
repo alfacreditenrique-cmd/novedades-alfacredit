@@ -68,7 +68,7 @@ class NovedadesApp:
         ]
         self.opciones_novedad = [""] + [item[0] for item in self.leyenda_maestra]
         self.lista_cargos = ["SUPERVISOR", "OFICIAL DE CREDITO", "OFICIAL DE DESEMBOLSO", "PROMOTOR INTERNO", "RESP. OPERACIONES", "CONSERJE", "GERENTE SUCURSAL"]
-        self.lista_sucursales = ["Estelí", "Masaya", "Managua", "Managua Norte", "Sébaco", "Jinotepe", "Juigalpa", "Rivas", "León"]
+        self.lista_sucursales = ["Estelí", "Masaya", "Managua", "Sébaco", "Jinotepe", "Juigalpa", "Rivas", "León"]
 
         self.header_labels_pas = [] 
         self.header_labels_fut = []

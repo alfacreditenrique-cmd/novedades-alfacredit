@@ -5,3 +5,4 @@ openpyxl
 pydantic
 python-multipart
 requests
+libsql-client

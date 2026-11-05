@@ -12,6 +12,16 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/css/custom.css">
+    <script>
+        (function() {
+            const savedTheme = localStorage.getItem('alfa_theme');
+            if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        })();
+    </script>
     {% block extra_head %}{% endblock %}
 </head>
 <body class="min-h-screen flex flex-col bg-slate-50 text-slate-800">
@@ -74,9 +84,16 @@
                     </a>
                     {% endif %}
                 </nav>
+                {% endif %}
 
-                <!-- USUARIO Y SALIR -->
+                <!-- ACCIONES DERECHA (MODO OSCURO + USUARIO) -->
                 <div class="flex items-center space-x-3">
+                    <button id="theme-toggle-btn" type="button" onclick="toggleDarkMode()" title="Alternar Modo Oscuro / Modo Claro" class="p-2 rounded-full hover:bg-white/10 text-white transition border border-white/20 flex items-center justify-center">
+                        <i id="theme-toggle-dark-icon" data-lucide="moon" class="w-4 h-4"></i>
+                        <i id="theme-toggle-light-icon" data-lucide="sun" class="w-4 h-4 hidden"></i>
+                    </button>
+
+                    {% if user %}
                     <div class="text-right hidden sm:block">
                         <span class="block text-xs font-bold text-white">{{ user.nombre }}</span>
                         <span class="block text-[11px] font-medium text-orange-200 uppercase tracking-wide">
@@ -86,8 +103,8 @@
                     <a href="/logout" title="Cerrar Sesión" class="p-2 rounded-full hover:bg-red-600/80 text-white transition bg-red-700/60 shadow-sm">
                         <i data-lucide="log-out" class="w-4 h-4"></i>
                     </a>
+                    {% endif %}
                 </div>
-                {% endif %}
             </div>
         </div>
     </header>
@@ -116,6 +133,9 @@
     <!-- Scripts -->
     <script src="/static/js/app.js"></script>
     <script>
+        if (typeof initTheme === 'function') {
+            initTheme();
+        }
         lucide.createIcons();
     </script>
     {% block extra_scripts %}{% endblock %}

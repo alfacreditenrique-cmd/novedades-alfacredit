@@ -8,7 +8,7 @@ LEYENDA_MAESTRA = [
     {"clave": "V", "descripcion": "Vacaciones", "efecto": "-1 día", "valor": -1.0, "color": "danger"},
     {"clave": "MD", "descripcion": "Medio Día", "efecto": "-0.5 día", "valor": -0.5, "color": "warning"},
     {"clave": "S", "descripcion": "Subsidio", "efecto": "-1 día", "valor": -1.0, "color": "danger"},
-    {"clave": "B", "descripcion": "Baja", "efecto": "-1 día", "valor": -1.0, "color": "danger"},
+    {"clave": "B", "descripcion": "Baja / Ausencia", "efecto": "-1 día", "valor": -1.0, "color": "danger"},
     {"clave": "F", "descripcion": "Falta", "efecto": "-1 día", "valor": -1.0, "color": "danger"},
     {"clave": "N", "descripcion": "Nuevo", "efecto": "+1 (Suma)", "valor": 1.0, "color": "success"},
     {"clave": "R", "descripcion": "Reposición", "efecto": "+1 (Suma)", "valor": 1.0, "color": "success"},
