@@ -1,0 +1,13 @@
+build/
+dist/
+*.spec
+*.rar
+*.bat
+__pycache__/
+*.pyc
+.git/
+storage/backups/
+storage/comprobantes/
+storage/adjuntos_brandon/
+.venv/
+venv/

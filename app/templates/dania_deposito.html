@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Registro de Depósito - Dania | AlfaCredit S.A.{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto space-y-6">
+
+    <!-- CABECERA -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#27ae60] text-white">Fase 3: Tesorería</span>
+                <span class="text-xs text-slate-500 font-semibold">Corte Sábado: <b>{{ estado.ciclo.fecha_sabado }}</b></span>
+            </div>
+            <h1 class="text-xl font-black text-slate-800 tracking-tight mt-1">Desembolso & Comprobante de Combustible (Dania)</h1>
+            <p class="text-xs text-slate-500">Registro oficial del depósito bancario realizado y carga de comprobante para las sucursales</p>
+        </div>
+
+        <div class="text-right">
+            <span class="block text-xs font-bold text-slate-400 uppercase">Total Solicitado a Desembolsar</span>
+            <span class="text-2xl font-black text-emerald-700 money-display">C$ {{ "{:,.2f}".format(estado.suma_total_neto) }}</span>
+        </div>
+    </div>
+
+    <!-- REVISIÓN DE RESPALDOS / PDFS ADJUNTOS POR BRANDON -->
+    {% if estado.evento_brandon and estado.evento_brandon.archivos_adjuntos %}
+    <div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-black uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
+                <i data-lucide="paperclip" class="w-4 h-4 text-orange-600"></i>
+                Documentos PDF de Respaldo Enviados por Brandon ({{ estado.evento_brandon.archivos_adjuntos|length }})
+            </span>
+            <span class="text-[11px] text-amber-700 font-bold">Revisar antes de desembolsar</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            {% for pdf in estado.evento_brandon.archivos_adjuntos %}
+            <a href="/api/adjuntos-brandon/download/{{ pdf }}" target="_blank" class="px-3 py-1.5 bg-white hover:bg-amber-100 text-amber-950 rounded-lg font-bold text-xs inline-flex items-center gap-1.5 border border-amber-300 shadow-sm transition">
+                <i data-lucide="file-text" class="w-4 h-4 text-orange-600"></i>
+                <span>{{ pdf.split('_')[-1] }}</span>
+                <i data-lucide="download" class="w-3 h-3 text-slate-400 ml-1"></i>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- FORMULARIO DE REGISTRO DE DEPÓSITO -->
+    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center space-x-3 mb-6 pb-4 border-b border-slate-100">
+            <div class="p-3 bg-emerald-100 text-emerald-800 rounded-xl">
+                <i data-lucide="receipt" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-slate-800 text-base">Formulario de Confirmación de Depósito Bancario</h3>
+                <span class="text-xs text-slate-500">Al registrar el depósito, el ciclo se marcará como 100% completado</span>
+            </div>
+        </div>
+
+        <form id="form-dania-deposito" onsubmit="registrarDepositoDania(event)" class="space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 uppercase mb-1">Monto Depositado Total (C$)</label>
+                    <input type="number" step="0.01" id="monto" name="monto" value="{{ estado.suma_total_neto }}" required class="w-full border border-slate-300 rounded-lg p-2.5 font-bold text-sm text-[#154360]">
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 uppercase mb-1">Número de Referencia / Transferencia Bancaria</label>
+                    <input type="text" id="referencia" name="referencia" placeholder="Ej: BANPRO-REF-98471203" required class="w-full border border-slate-300 rounded-lg p-2.5 font-semibold text-sm uppercase">
+                </div>
+            </div>
+
+            <div class="text-xs">
+                <label class="block font-bold text-slate-700 uppercase mb-1">Adjuntar Archivo de Comprobante (PDF, JPG, PNG)</label>
+                <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-emerald-500 transition bg-slate-50">
+                    <div class="space-y-1 text-center">
+                        <i data-lucide="upload-cloud" class="mx-auto h-10 w-10 text-slate-400"></i>
+                        <div class="flex text-xs text-slate-600">
+                            <label for="comprobante_file" class="relative cursor-pointer bg-white rounded-md font-bold text-[#154360] hover:text-blue-700 focus-within:outline-none">
+                                <span>Seleccionar archivo desde tu equipo</span>
+                                <input id="comprobante_file" name="comprobante_file" type="file" accept=".pdf,.png,.jpg,.jpeg" class="sr-only" onchange="mostrarNombreArchivo(this)">
+                            </label>
+                        </div>
+                        <p id="nombre-archivo-seleccionado" class="text-[11px] text-slate-500">PDF, PNG, JPG hasta 10MB</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="text-xs">
+                <label class="block font-bold text-slate-700 uppercase mb-1">Notas u Observaciones del Depósito (Opcional)</label>
+                <textarea id="notas" name="notas" rows="2" placeholder="Ej: Depósito efectuado exitosamente en cuentas correspondientes..." class="w-full border border-slate-300 rounded-lg p-2.5"></textarea>
+            </div>
+
+            <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <button type="button" onclick="sincronizarCorreo()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 transition flex items-center space-x-1">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>Buscar en Correos Recibidos de Dania</span>
+                </button>
+
+                <button type="submit" class="px-6 py-3 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-black rounded-lg shadow-lg hover:shadow-xl transition flex items-center space-x-2">
+                    <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                    <span>REGISTRAR Y CONFIRMAR DEPÓSITO</span>
+                </button>
+            </div>
+        </form>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function mostrarNombreArchivo(input) {
+    const lbl = document.getElementById("nombre-archivo-seleccionado");
+    if (input.files && input.files[0]) {
+        lbl.innerHTML = `Archivo seleccionado: <b class="text-emerald-700">${input.files[0].name}</b> (${Math.round(input.files[0].size/1024)} KB)`;
+    }
+}
+
+async function registrarDepositoDania(e) {
+    e.preventDefault();
+    const form = e.target;
+    const formData = new FormData(form);
+
+    const confirm = await Swal.fire({
+        title: "¿Confirmar Depósito de Combustible?",
+        text: "Esto completará el ciclo semanal al 100% y notificará a todas las sucursales.",
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#27ae60",
+        confirmButtonText: "Sí, registrar depósito",
+        cancelButtonText: "Cancelar"
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    Swal.fire({title: "Procesando comprobante...", didOpen: () => Swal.showLoading()});
+
+    try {
+        const res = await fetch("/api/dania/register-deposit", {
+            method: "POST",
+            body: formData
+        });
+        const data = await res.json();
+        if (data.success) {
+            Swal.fire("¡Depósito Registrado!", data.message, "success").then(() => {
+                window.location.href = "/dashboard";
+            });
+        } else {
+            Swal.fire("Error", data.detail || "Error al procesar depósito", "error");
+        }
+    } catch (err) {
+        Swal.fire("Error", "Fallo de conexión: " + err, "error");
+    }
+}
+</script>
+{% endblock %}

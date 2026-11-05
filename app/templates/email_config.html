@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Configuración de Monitoreo de Correo | AlfaCredit S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- CABECERA -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#154360] text-white">Integración IMAP / SSL</span>
+            </div>
+            <h1 class="text-xl font-black text-slate-800 tracking-tight mt-1">Monitoreo del Correo Electrónico de Brandon</h1>
+            <p class="text-xs text-slate-500">Configura la conexión segura para estudiar y detectar automáticamente cuando Brandon envía la solicitud o cuando Dania envía el comprobante</p>
+        </div>
+
+        <button type="button" onclick="sincronizarCorreo()" class="px-4 py-2 bg-[#154360] hover:bg-[#0f2d42] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            <span>Escanear Correo Ahora</span>
+        </button>
+    </div>
+
+    <!-- FORMULARIO DE CONFIGURACIÓN -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <div class="lg:col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+            <h3 class="font-bold text-slate-800 text-sm mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                <i data-lucide="settings" class="w-4 h-4 text-[#154360]"></i>
+                Parámetros de Conexión IMAP
+            </h3>
+
+            <form id="form-email-cfg" onsubmit="guardarConfigCorreo(event)" class="space-y-4 text-xs">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-bold text-slate-700 uppercase mb-1">Servidor IMAP</label>
+                        <input type="text" id="imap_server" value="{{ cfg.imap_server }}" required class="w-full border border-slate-300 rounded-lg p-2 font-mono">
+                        <span class="text-[10px] text-slate-400">Outlook / Office 365: <b>outlook.office365.com</b></span>
+                    </div>
+
+                    <div>
+                        <label class="block font-bold text-slate-700 uppercase mb-1">Puerto IMAP</label>
+                        <input type="number" id="imap_port" value="{{ cfg.imap_port }}" required class="w-full border border-slate-300 rounded-lg p-2 font-mono">
+                        <span class="text-[10px] text-slate-400">Estándar SSL: <b>993</b></span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block font-bold text-slate-700 uppercase mb-1">Correo de Brandon</label>
+                        <input type="email" id="brandon_email" value="{{ cfg.brandon_email }}" required class="w-full border border-slate-300 rounded-lg p-2">
+                    </div>
+
+                    <div>
+                        <label class="block font-bold text-slate-700 uppercase mb-1">Contraseña de Correo / App Password</label>
+                        <input type="password" id="brandon_password" value="{{ cfg.brandon_password }}" placeholder="••••••••••••••••" class="w-full border border-slate-300 rounded-lg p-2 font-mono">
+                        <span class="text-[10px] text-slate-400">Contraseña de Outlook o contraseña de aplicación corporativa</span>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-slate-700 uppercase mb-1">Correo de Dania (Tesorería / Remitente Comprobante)</label>
+                    <input type="email" id="dania_email" value="{{ cfg.dania_email }}" class="w-full border border-slate-300 rounded-lg p-2">
+                </div>
+
+                <div class="flex items-center space-x-2 pt-2">
+                    <input type="checkbox" id="enabled" {% if cfg.enabled %}checked{% endif %} class="w-4 h-4 text-[#154360] rounded border-slate-300">
+                    <label for="enabled" class="font-bold text-slate-700">Habilitar monitoreo automático en segundo plano (cada 60 segundos)</label>
+                </div>
+
+                <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                    <button type="button" onclick="probarConexionCorreo()" class="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg border border-slate-300 transition flex items-center space-x-1">
+                        <i data-lucide="plug" class="w-4 h-4"></i>
+                        <span>Probar Conexión</span>
+                    </button>
+
+                    <button type="submit" class="px-5 py-2.5 bg-[#154360] hover:bg-[#0f2d42] text-white font-bold rounded-lg shadow transition">
+                        Guardar Configuración
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ESTADO Y EXPLICACIÓN -->
+        <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+            <h3 class="font-bold text-slate-800 text-sm pb-2 border-b border-slate-100">Estado de Sincronización</h3>
+            
+            <div class="text-xs space-y-2">
+                <div class="flex justify-between">
+                    <span class="text-slate-500 font-medium">Última Sincronización:</span>
+                    <span class="font-bold text-slate-800">{{ cfg.last_sync or 'Nunca' }}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500 font-medium">Último Resultado:</span>
+                    <span class="font-bold text-emerald-700">{{ cfg.last_status or 'Pendiente' }}</span>
+                </div>
+            </div>
+
+            <div class="p-3 bg-blue-50 rounded-lg border border-blue-200 text-[11px] text-blue-900 leading-relaxed space-y-2">
+                <p class="font-bold">¿Cómo funciona la detección de correos?</p>
+                <ul class="list-disc pl-4 space-y-1">
+                    <li><b>Enviados de Brandon:</b> El sistema busca en la carpeta de enviados correos con el asunto <i>"Solicitud de Combustible"</i> y avanza la barra a Fase 3 automáticamente.</li>
+                    <li><b>Entrada de Dania:</b> El sistema busca correos de Dania con comprobantes bancarios adjuntos (PDF/PNG), los descarga a la base de datos y marca el ciclo como completado al 100%.</li>
+                </ul>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- LOGS DE MONITOREO DE CORREOS -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-100">
+            <h3 class="font-bold text-slate-800 text-sm">Historial de Eventos del Monitor de Correo</h3>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="bg-slate-100 text-slate-600 font-bold uppercase text-[11px] border-b border-slate-200">
+                        <th class="p-3">Fecha Procesado</th>
+                        <th class="p-3">Tipo</th>
+                        <th class="p-3">Remitente</th>
+                        <th class="p-3">Destinatario</th>
+                        <th class="p-3">Asunto</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for l in logs_correo %}
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="p-3 font-mono text-slate-500">{{ l.procesado_en }}</td>
+                        <td class="p-3 font-bold">
+                            <span class="px-2 py-0.5 rounded text-[10px] {% if l.tipo == 'ERROR' %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %}">
+                                {{ l.tipo }}
+                            </span>
+                        </td>
+                        <td class="p-3 text-slate-700">{{ l.remitente }}</td>
+                        <td class="p-3 text-slate-700">{{ l.destinatario }}</td>
+                        <td class="p-3 text-slate-800 font-medium">{{ l.asunto }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="p-6 text-center text-slate-400 italic">No hay registros de correo aún. Haz clic en "Escanear Correo Ahora" para realizar una prueba.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+async function probarConexionCorreo() {
+    Swal.fire({title: "Probando conexión IMAP...", didOpen: () => Swal.showLoading()});
+    try {
+        const res = await fetch("/api/email/test", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                imap_server: document.getElementById("imap_server").value,
+                imap_port: document.getElementById("imap_port").value,
+                brandon_email: document.getElementById("brandon_email").value,
+                brandon_password: document.getElementById("brandon_password").value,
+                use_ssl: true
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            Swal.fire("¡Conexión Exitosa!", data.message, "success");
+        } else {
+            Swal.fire("Fallo de Conexión", data.message, "warning");
+        }
+    } catch (e) {
+        Swal.fire("Error", "Error al ejecutar prueba: " + e, "error");
+    }
+}
+
+async function guardarConfigCorreo(e) {
+    e.preventDefault();
+    Swal.fire({title: "Guardando...", didOpen: () => Swal.showLoading()});
+    try {
+        const res = await fetch("/api/email/save-config", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+                imap_server: document.getElementById("imap_server").value,
+                imap_port: parseInt(document.getElementById("imap_port").value),
+                brandon_email: document.getElementById("brandon_email").value,
+                brandon_password: document.getElementById("brandon_password").value,
+                dania_email: document.getElementById("dania_email").value,
+                enabled: document.getElementById("enabled").checked,
+                use_ssl: true
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            Swal.fire("Guardado", data.message, "success");
+        } else {
+            Swal.fire("Error", "No se pudo guardar", "error");
+        }
+    } catch (e) {
+        Swal.fire("Error", "Error al guardar: " + e, "error");
+    }
+}
+</script>
+{% endblock %}

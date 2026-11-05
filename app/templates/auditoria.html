@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Registro de Auditoría Total | AlfaCredit S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- CABECERA -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#154360] text-white">Seguridad & Cumplimiento</span>
+            </div>
+            <h1 class="text-xl font-black text-slate-800 tracking-tight mt-1">Registro de Auditoría Total (Audit Trail)</h1>
+            <p class="text-xs text-slate-500">Historial inmutable de cada acción realizada por Gerentes, Brandon, Dania y el Sistema</p>
+        </div>
+
+        <!-- FILTROS -->
+        <form method="GET" action="/auditoria" class="flex items-center flex-wrap gap-2 text-xs">
+            <select name="accion" onchange="this.form.submit()" class="border border-slate-300 rounded-lg p-2 font-medium bg-slate-50">
+                <option value="TODAS" {% if filtro_accion == 'TODAS' %}selected{% endif %}>Todas las Acciones</option>
+                <option value="LOGIN_EXITOSO" {% if filtro_accion == 'LOGIN_EXITOSO' %}selected{% endif %}>Inicio de Sesión</option>
+                <option value="ENVIO_REPORTE" {% if filtro_accion == 'ENVIO_REPORTE' %}selected{% endif %}>Envío de Novedades</option>
+                <option value="GUARDAR_BORRADOR" {% if filtro_accion == 'GUARDAR_BORRADOR' %}selected{% endif %}>Guardado Borrador</option>
+                <option value="SOLICITUD_COMBUSTIBLE_ENVIADA" {% if filtro_accion == 'SOLICITUD_COMBUSTIBLE_ENVIADA' %}selected{% endif %}>Solicitud Brandon</option>
+                <option value="DEPOSITO_COMBUSTIBLE_REGISTRADO" {% if filtro_accion == 'DEPOSITO_COMBUSTIBLE_REGISTRADO' %}selected{% endif %}>Depósito Dania</option>
+                <option value="DETECCION_CORREO_BRANDON" {% if filtro_accion == 'DETECCION_CORREO_BRANDON' %}selected{% endif %}>Correo Detectado (Brandon)</option>
+                <option value="DETECCION_CORREO_DANIA" {% if filtro_accion == 'DETECCION_CORREO_DANIA' %}selected{% endif %}>Correo Detectado (Dania)</option>
+                <option value="CREAR_RESPALDO" {% if filtro_accion == 'CREAR_RESPALDO' %}selected{% endif %}>Respaldos</option>
+            </select>
+
+            <input type="text" name="search" value="{{ search_term }}" placeholder="Buscar por usuario o detalle..." class="border border-slate-300 rounded-lg p-2 font-medium w-48">
+            <button type="submit" class="px-3 py-2 bg-[#154360] text-white font-bold rounded-lg hover:bg-slate-800 transition">Filtrar</button>
+        </form>
+    </div>
+
+    <!-- TABLA DE AUDITORÍA -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="bg-slate-100 text-slate-600 font-bold uppercase text-[11px] border-b border-slate-200">
+                        <th class="p-3 w-36">Fecha / Hora</th>
+                        <th class="p-3">Usuario</th>
+                        <th class="p-3">Rol / Sucursal</th>
+                        <th class="p-3">Acción</th>
+                        <th class="p-3">Detalle del Evento</th>
+                        <th class="p-3 w-28 text-center">IP Origen</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for log in logs %}
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="p-3 text-slate-500 font-mono text-[11px] whitespace-nowrap">{{ log.timestamp }}</td>
+                        <td class="p-3">
+                            <span class="font-bold text-slate-800 block">{{ log.usuario_nombre }}</span>
+                            <span class="text-slate-400 text-[10px] block">{{ log.usuario_email }}</span>
+                        </td>
+                        <td class="p-3">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
+                                {{ log.rol }}
+                            </span>
+                            {% if log.sucursal_nombre and log.sucursal_nombre != 'N/A' %}
+                            <span class="block text-[10px] text-slate-500 font-semibold mt-0.5">{{ log.sucursal_nombre }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="p-3">
+                            <span class="font-mono text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                {{ log.accion }}
+                            </span>
+                        </td>
+                        <td class="p-3 text-slate-700 font-medium leading-relaxed">{{ log.detalle }}</td>
+                        <td class="p-3 text-slate-400 font-mono text-center text-[11px]">{{ log.ip_address or '127.0.0.1' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="p-8 text-center text-slate-400 italic">No hay registros de auditoría que coincidan con la búsqueda.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

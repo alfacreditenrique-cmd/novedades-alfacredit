@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Centro de Respaldos y Seguridad | AlfaCredit S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- CABECERA -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#154360] text-white">Respaldo Total</span>
+            </div>
+            <h1 class="text-xl font-black text-slate-800 tracking-tight mt-1">Centro de Copias de Seguridad & Restauración</h1>
+            <p class="text-xs text-slate-500">Respaldos completos en formato .ZIP que incluyen la base de datos SQLite, volcado JSON, configuración y comprobantes bancarios</p>
+        </div>
+
+        <button type="button" onclick="crearRespaldo()" class="px-5 py-2.5 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-black rounded-lg shadow-md transition flex items-center space-x-2">
+            <i data-lucide="shield-plus" class="w-4 h-4"></i>
+            <span>GENERAR NUEVO RESPALDO COMPLETO AHORA</span>
+        </button>
+    </div>
+
+    <!-- TARJETA INFORMATIVA -->
+    <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-start space-x-3 text-xs text-blue-900">
+        <i data-lucide="info" class="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"></i>
+        <div>
+            <span class="font-bold block text-sm">Garantía de Respaldo Total de AlfaCredit S.A.</span>
+            <p class="mt-0.5">Cada respaldo empaqueta en un solo archivo comprimido la base de datos íntegra (usuarios, sucursales, asistencias, eventos de correo), todos los comprobantes de depósito adjuntos en disco y un manifiesto firmado. Puedes descargar las copias a tu computadora o restaurar el sistema en cualquier momento.</p>
+        </div>
+    </div>
+
+    <!-- LISTA DE RESPALDOS DISPONIBLES -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-100 flex items-center justify-between">
+            <h3 class="font-bold text-slate-800 text-sm">Historial de Copias de Seguridad Disponibles</h3>
+            <span class="text-xs text-slate-500 font-semibold">Total Respaldos: <b>{{ backups|length }}</b></span>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse text-xs">
+                <thead>
+                    <tr class="bg-slate-100 text-slate-600 font-bold uppercase text-[11px] border-b border-slate-200">
+                        <th class="p-3">Fecha y Hora</th>
+                        <th class="p-3">Nombre del Archivo</th>
+                        <th class="p-3">Tamaño</th>
+                        <th class="p-3">Generado Por</th>
+                        <th class="p-3">Tipo</th>
+                        <th class="p-3 text-center">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for b in backups %}
+                    <tr class="hover:bg-slate-50 transition">
+                        <td class="p-3 font-mono text-slate-600 font-bold">{{ b.timestamp }}</td>
+                        <td class="p-3 font-mono font-medium text-slate-800 flex items-center gap-1.5">
+                            <i data-lucide="archive" class="w-4 h-4 text-amber-600"></i>
+                            <span>{{ b.nombre_archivo }}</span>
+                        </td>
+                        <td class="p-3 text-slate-600 font-semibold">{{ "{:,.2f}".format(b.tamano_bytes / 1024) }} KB</td>
+                        <td class="p-3 text-slate-700">{{ b.generado_por }}</td>
+                        <td class="p-3">
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase {% if b.tipo == 'MANUAL' %}bg-blue-100 text-blue-800{% else %}bg-purple-100 text-purple-800{% endif %}">
+                                {{ b.tipo }}
+                            </span>
+                        </td>
+                        <td class="p-3 text-center space-x-2">
+                            <a href="/api/backups/download/{{ b.nombre_archivo }}" class="inline-flex items-center space-x-1 px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded transition border border-slate-300">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                                <span>Descargar .ZIP</span>
+                            </a>
+
+                            {% if user.rol == 'admin' %}
+                            <button type="button" onclick="restaurarRespaldo('{{ b.nombre_archivo }}')" class="inline-flex items-center space-x-1 px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded transition border border-red-200">
+                                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                                <span>Restaurar</span>
+                            </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="p-8 text-center text-slate-400 italic">No hay copias de seguridad registradas aún. Genera la primera con el botón superior.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

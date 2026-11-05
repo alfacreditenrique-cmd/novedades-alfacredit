@@ -1,0 +1,20 @@
+# Entornos y compilación
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+build/
+dist/
+*.rar
+
+# Almacenamiento local temporal y respaldos
+storage/backups/*
+storage/comprobantes/*
+storage/adjuntos_brandon/*
+!storage/database/alfacredit_novedades.db
+
+# Vercel y entornos virtuales
+.vercel
+.env
+.venv
+venv/

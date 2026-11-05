@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block title %}Informe de Novedades - Sucursal {{ sucursal.nombre }} | AlfaCredit S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-5">
+
+    <!-- BARRA SUPERIOR DE INFORMACIÓN Y ACCIONES -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#154360] text-white">Sucursal: {{ sucursal.nombre }}</span>
+                <span class="badge-alfa {% if reporte.estado in ['ENVIADO', 'APROBADO'] %}enviado{% elif reporte.estado == 'BORRADOR' %}borrador{% else %}pendiente{% endif %}">
+                    Estado: {{ reporte.estado }}
+                </span>
+            </div>
+            <h1 class="text-xl font-black text-slate-800 tracking-tight mt-1">Informe de Asistencias, Novedades y Combustible</h1>
+            <p class="text-xs text-slate-500">Fecha Corte: <b>{{ ciclo.fecha_sabado }}</b> | Gerente: <b>{{ sucursal.email_gerente }}</b></p>
+        </div>
+
+        <!-- SELECTOR DE SUCURSAL SI ES ADMIN O BRANDON -->
+        <div class="flex items-center flex-wrap gap-2">
+            {% if user.rol in ['admin', 'brandon'] %}
+            <div class="flex items-center space-x-2 mr-2">
+                <label class="text-xs font-bold text-slate-500 uppercase">Cambiar Sucursal:</label>
+                <select onchange="location.href='/novedades?sucursal_id='+this.value" class="text-xs font-bold bg-slate-100 border border-slate-300 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-blue-500">
+                    {% for s in lista_sucursales %}
+                    <option value="{{ s.id }}" {% if s.id == sucursal.id %}selected{% endif %}>{{ s.nombre }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endif %}
+
+            <button type="button" onclick="agregarFilaEmpleado()" class="px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
+                <i data-lucide="user-plus" class="w-4 h-4"></i>
+                <span>+ Empleado</span>
+            </button>
+
+            <button type="button" onclick="guardarReporte({{ reporte.id }}, false)" class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                <span>Guardar Borrador</span>
+            </button>
+
+            <button type="button" onclick="guardarReporte({{ reporte.id }}, true)" class="px-4 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg shadow-md transition flex items-center space-x-1">
+                <i data-lucide="send" class="w-4 h-4"></i>
+                <span>Enviar Reporte Oficial</span>
+            </button>
+
+            <a href="/api/export/excel/sucursal/{{ sucursal.id }}" class="px-3 py-2 bg-[#154360] hover:bg-[#0f2d42] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                <span>Excel</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- LEYENDA MAESTRA CORPORATIVA -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-black uppercase text-[#154360] tracking-wider flex items-center gap-1.5">
+                <i data-lucide="info" class="w-4 h-4 text-orange-600"></i>
+                Leyenda Maestra de Novedades & Deducciones
+            </span>
+            <span class="text-[11px] font-bold text-red-600 italic">
+                * Las deducciones del sábado equivalen a -1 día de combustible (N y R suman +1 día)
+            </span>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2 text-xs">
+            {% for item in leyenda %}
+            <div class="p-2 rounded-lg border border-slate-200 bg-slate-50 flex flex-col items-center text-center">
+                <span class="font-black text-sm {% if item.valor > 0 %}text-green-700{% elif item.valor < 0 %}text-red-600{% else %}text-slate-700{% endif %}">
+                    {{ item.clave }}
+                </span>
+                <span class="text-[11px] font-semibold text-slate-700 leading-tight">{{ item.descripcion }}</span>
+                <span class="text-[10px] font-bold mt-0.5 {% if item.valor > 0 %}text-green-600{% elif item.valor < 0 %}text-red-500{% else %}text-slate-500{% endif %}">
+                    {{ item.efecto }}
+                </span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- TABLA PRINCIPAL DE NOVEDADES (GRID COMPLETO) -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-md overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse novedades-table">
+                <thead>
+                    <!-- ENCABEZADOS GRUPALES -->
+                    <tr>
+                        <th rowspan="2" class="th-general w-10">No.</th>
+                        <th rowspan="2" class="th-general min-w-[200px]">Nombre Colaborador</th>
+                        <th rowspan="2" class="th-general min-w-[140px]">Cargo</th>
+                        <th colspan="6" class="th-past py-1">Histórico (Semana Anterior)</th>
+                        <th colspan="6" class="th-future py-1">Proyección (Semana Próxima)</th>
+                        <th rowspan="2" class="th-general w-24">Estado</th>
+                        <th rowspan="2" class="th-general w-24">Asig. Comb. (C$)</th>
+                        <th rowspan="2" class="th-general w-24">Deducir / Sumar</th>
+                        <th rowspan="2" class="th-general w-24 bg-emerald-700">Total Neto (C$)</th>
+                        <th rowspan="2" class="th-general w-14">Talla</th>
+                        <th rowspan="2" class="th-general min-w-[120px]">Req.</th>
+                        <th rowspan="2" class="th-general min-w-[120px]">Obs.</th>
+                        <th rowspan="2" class="th-general w-10">Acción</th>
+                    </tr>
+                    <!-- DÍAS INDIVIDUALES -->
+                    <tr>
+                        {% for dia, fec in fechas_pas %}
+                        <th class="th-past text-[10px] py-1 border-r border-orange-400">
+                            {{ dia }}<br><span class="text-[9px] opacity-90">{{ fec }}</span>
+                        </th>
+                        {% endfor %}
+                        {% for dia, fec in fechas_fut %}
+                        <th class="th-future text-[10px] py-1 border-r border-emerald-400">
+                            {{ dia }}<br><span class="text-[9px] opacity-90">{{ fec }}</span>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody id="novedades-tbody">
+                    {% for fila in filas %}
+                    <tr class="border-b border-gray-200 hover:bg-slate-50 transition" data-id="{{ fila.id }}">
+                        <td class="p-2 text-center text-xs font-bold text-gray-500 row-number">{{ loop.index }}</td>
+                        <td class="p-2">
+                            <input type="text" class="input-nombre w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold focus:ring-1 focus:ring-blue-500" value="{{ fila.nombre }}">
+                        </td>
+                        <td class="p-2">
+                            <select class="input-cargo w-full border border-gray-300 rounded px-2 py-1 text-xs font-medium">
+                                {% for cg in cargos_opciones %}
+                                <option value="{{ cg }}" {% if cg in fila.cargo %}selected{% endif %}>{{ cg }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+
+                        <!-- DÍAS PASADOS -->
+                        {% for d_val in fila.dias_pas %}
+                        <td class="p-1 text-center bg-orange-50/40">
+                            <select class="novedad-select {% if d_val in ['V','MD','S','B','F'] %}deduccion{% elif d_val in ['N','R'] %}adicion{% endif %}" onchange="recalcularFila(this.closest('tr'))">
+                                <option value=""></option>
+                                {% for item in leyenda %}
+                                <option value="{{ item.clave }}" {% if item.clave == d_val %}selected{% endif %}>{{ item.clave }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        {% endfor %}
+
+                        <!-- DÍAS FUTUROS -->
+                        {% for d_val in fila.dias_fut %}
+                        <td class="p-1 text-center bg-green-50/40">
+                            <select class="novedad-select {% if d_val in ['V','MD','S','B','F'] %}deduccion{% elif d_val in ['N','R'] %}adicion{% endif %}" onchange="recalcularFila(this.closest('tr'))">
+                                <option value=""></option>
+                                {% for item in leyenda %}
+                                <option value="{{ item.clave }}" {% if item.clave == d_val %}selected{% endif %}>{{ item.clave }}</option>
+                                {% endfor %}
+                            </select>
+                        </td>
+                        {% endfor %}
+
+                        <td class="p-2">
+                            <select class="input-estado w-full border border-gray-300 rounded px-1 py-1 text-xs font-bold text-center">
+                                <option value="ACTIVO" {% if fila.estado == 'ACTIVO' %}selected{% endif %}>ACTIVO</option>
+                                <option value="NUEVO" {% if fila.estado == 'NUEVO' %}selected{% endif %}>NUEVO</option>
+                                <option value="BAJA" {% if fila.estado == 'BAJA' %}selected{% endif %}>BAJA</option>
+                                <option value="SUBSIDIO" {% if fila.estado == 'SUBSIDIO' %}selected{% endif %}>SUBSIDIO</option>
+                            </select>
+                        </td>
+
+                        <td class="p-2">
+                            <input type="number" step="0.5" value="{{ fila.combustible_base }}" class="combustible-base combustible-input w-20 px-2 py-1 text-xs rounded text-center font-bold" oninput="recalcularFila(this.closest('tr'))">
+                        </td>
+
+                        <td class="p-2 text-center bg-slate-50">
+                            <span class="display-deduccion money-display text-xs {% if fila.factor_total < 0 %}text-red-600{% elif fila.factor_total > 0 %}text-green-600{% else %}text-slate-700{% endif %}">
+                                {{ "{:,.2f}".format(fila.deduccion_ajuste) }}
+                            </span>
+                        </td>
+
+                        <td class="p-2 text-center bg-emerald-50">
+                            <span class="display-neto money-display text-xs font-bold text-emerald-800">
+                                {{ "{:,.2f}".format(fila.total_neto) }}
+                            </span>
+                        </td>
+
+                        <td class="p-2">
+                            <input type="text" class="input-talla w-12 border border-gray-300 rounded px-1 py-1 text-xs text-center uppercase" value="{{ fila.talla or '' }}" placeholder="Talla">
+                        </td>
+
+                        <td class="p-2">
+                            <input type="text" class="input-req w-full border border-gray-300 rounded px-2 py-1 text-xs" value="{{ fila.req or '' }}" placeholder="Req...">
+                        </td>
+
+                        <td class="p-2">
+                            <input type="text" class="input-obs w-full border border-gray-300 rounded px-2 py-1 text-xs" value="{{ fila.obs or '' }}" placeholder="Obs...">
+                        </td>
+
+                        <td class="p-2 text-center">
+                            <button type="button" onclick="eliminarFila(this)" class="text-red-500 hover:text-red-700 font-bold p-1">✖</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <!-- FILA DE GRAN TOTAL -->
+                    <tr class="bg-slate-800 text-white font-bold text-sm">
+                        <td colspan="3" class="p-3 text-right uppercase tracking-wider">
+                            Total Colaboradores: <span id="total-empleados-conteo" class="text-amber-300">{{ filas|length }}</span>
+                        </td>
+                        <td colspan="12" class="p-3 text-right uppercase tracking-wider">
+                            Asignación Base: <span id="gran-total-base" class="text-slate-300 money-display mr-4">C$ 0.00</span>
+                            TOTAL NETO APROBADO:
+                        </td>
+                        <td colspan="5" class="p-3 text-left">
+                            <span id="gran-total-neto" class="text-lg font-black text-white bg-red-600 px-4 py-1 rounded-lg money-display shadow">
+                                C$ 0.00
+                            </span>
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <!-- BOTONES DE PIE DE PÁGINA -->
+    <div class="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <a href="/dashboard" class="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center space-x-1">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>
+            <span>Volver a la Barra de Estado</span>
+        </a>
+
+        <div class="flex items-center space-x-3">
+            <button type="button" onclick="guardarReporte({{ reporte.id }}, false)" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-lg transition">
+                💾 Guardar Borrador
+            </button>
+            <button type="button" onclick="guardarReporte({{ reporte.id }}, true)" class="px-6 py-2.5 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-black rounded-lg shadow-lg hover:shadow-xl transition flex items-center space-x-2">
+                <i data-lucide="send" class="w-4 h-4"></i>
+                <span>ENVIAR REPORTE OFICIAL</span>
+            </button>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+
+{% block title %}Barra de Estado & Control de Novedades | AlfaCredit S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- ENCABEZADO Y PERIODO ACTIVO -->
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#154360] text-white">Ciclo Semanal</span>
+                <span class="text-xs text-slate-500 font-semibold">Corte Sábado: <b class="text-slate-800">{{ estado.ciclo.fecha_sabado }}</b></span>
+            </div>
+            <h1 class="text-2xl font-black text-slate-800 tracking-tight mt-1">Panel de Control & Trazabilidad</h1>
+            <p class="text-xs text-slate-500">Histórico: <b>{{ estado.ciclo.fecha_inicio_pas }} al {{ estado.ciclo.fecha_fin_pas }}</b> | Proyección: <b>{{ estado.ciclo.fecha_inicio_fut }} al {{ estado.ciclo.fecha_fin_fut }}</b></p>
+        </div>
+
+        <div class="flex items-center flex-wrap gap-2">
+            <button onclick="sincronizarCorreo()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 flex items-center space-x-1 transition shadow-sm">
+                <i data-lucide="refresh-cw" class="w-4 h-4 text-[#154360]"></i>
+                <span>Sincronizar Correo</span>
+            </button>
+
+            <a href="/api/export/excel/consolidado" class="px-3 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg flex items-center space-x-1 transition shadow-sm">
+                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                <span>Descargar Consolidado Excel</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- 1. BARRA DE ESTADO / PIPELINE TRANSPARENTE EN TIEMPO REAL -->
+    <div class="stepper-container p-6">
+        <div class="flex items-center justify-between mb-4">
+            <div>
+                <h2 class="text-base font-black text-[#154360] uppercase tracking-wide flex items-center gap-2">
+                    <i data-lucide="git-commit" class="w-5 h-5 text-orange-600"></i>
+                    Barra de Estado del Ciclo Semanal
+                </h2>
+                <span class="text-xs text-slate-500">Monitoreo transparente de entregas y detección de cuellos de botella</span>
+            </div>
+            <span class="text-xs font-bold text-slate-400">Actualizado: <span id="servidor-reloj">{{ estado.servidor_hora }}</span></span>
+        </div>
+
+        <!-- STEPPER 4 FASES -->
+        <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 py-4">
+            
+            <!-- FASE 1: GERENTES -->
+            <div id="step-1" class="step-item {% if estado.fase_actual == 1 %}active{% elif estado.fase_actual > 1 %}completed{% endif %}">
+                <div class="step-circle">
+                    {% if estado.fase_actual > 1 %}
+                    <i data-lucide="check" class="w-6 h-6"></i>
+                    {% else %}
+                    1
+                    {% endif %}
+                </div>
+                <div class="text-center mt-3">
+                    <span class="block text-xs font-bold text-slate-800">1. Reportes Gerentes</span>
+                    <span class="block text-[11px] font-semibold text-slate-500">
+                        {{ estado.conteo_enviadas }}/{{ estado.total_sucursales }} Sucursales
+                    </span>
+                    <span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-bold {% if estado.conteo_enviadas == estado.total_sucursales %}bg-green-100 text-green-700{% else %}bg-amber-100 text-amber-700{% endif %}">
+                        {% if estado.conteo_enviadas == estado.total_sucursales %}Completado (9/9){% else %}En Proceso{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- FASE 2: BRANDON (SOLICITUD COMBUSTIBLE) -->
+            <div id="step-2" class="step-item {% if estado.fase_actual == 2 %}active{% elif estado.fase_actual > 2 %}completed{% endif %}">
+                <div class="step-circle">
+                    {% if estado.fase_actual > 2 %}
+                    <i data-lucide="check" class="w-6 h-6"></i>
+                    {% else %}
+                    2
+                    {% endif %}
+                </div>
+                <div class="text-center mt-3">
+                    <span class="block text-xs font-bold text-slate-800">2. Solicitud Brandon</span>
+                    <span class="block text-[11px] font-semibold text-slate-500">Envío por Correo</span>
+                    <span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-bold {% if estado.evento_brandon %}bg-green-100 text-green-700{% else %}bg-slate-100 text-slate-600{% endif %}">
+                        {% if estado.evento_brandon %}Enviado a Finanzas{% else %}Pendiente{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- FASE 3: DANIA (DEPÓSITO Y COMPROBANTE) -->
+            <div id="step-3" class="step-item {% if estado.fase_actual == 3 %}active{% elif estado.fase_actual > 3 %}completed{% endif %}">
+                <div class="step-circle">
+                    {% if estado.fase_actual > 3 %}
+                    <i data-lucide="check" class="w-6 h-6"></i>
+                    {% else %}
+                    3
+                    {% endif %}
+                </div>
+                <div class="text-center mt-3">
+                    <span class="block text-xs font-bold text-slate-800">3. Depósito Dania</span>
+                    <span class="block text-[11px] font-semibold text-slate-500">Comprobante Bancario</span>
+                    <span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-bold {% if estado.evento_dania %}bg-green-100 text-green-700{% else %}bg-slate-100 text-slate-600{% endif %}">
+                        {% if estado.evento_dania %}Depositado & Validado{% else %}Pendiente{% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- FASE 4: COMPLETADO -->
+            <div id="step-4" class="step-item {% if estado.fase_actual == 4 %}completed{% endif %}">
+                <div class="step-circle">
+                    <i data-lucide="check-circle-2" class="w-6 h-6"></i>
+                </div>
+                <div class="text-center mt-3">
+                    <span class="block text-xs font-bold text-slate-800">4. Finalizado</span>
+                    <span class="block text-[11px] font-semibold text-slate-500">Fondos Despachados</span>
+                    <span class="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-full font-bold {% if estado.fase_actual == 4 %}bg-green-100 text-green-700{% else %}bg-slate-100 text-slate-600{% endif %}">
+                        {% if estado.fase_actual == 4 %}100% Completado{% else %}En Espera{% endif %}
+                    </span>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- BARRA DE ATRASO / DETECTOR DE RESPONSABLE -->
+        <div id="delay-banner" class="delay-banner {{ estado.nivel_alerta }} mt-6 flex items-start space-x-3">
+            <div class="p-1 rounded-full bg-white/60">
+                {% if estado.nivel_alerta == 'danger' %}
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
+                {% elif estado.nivel_alerta == 'warning' %}
+                <i data-lucide="clock" class="w-5 h-5 text-amber-600"></i>
+                {% else %}
+                <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                {% endif %}
+            </div>
+            <div class="flex-grow">
+                <div class="flex items-center justify-between">
+                    <span class="text-xs font-black uppercase tracking-wider">Responsable del Estado Actual: <span id="delay-responsible" class="underline font-bold">{{ estado.atraso_responsable }}</span></span>
+                </div>
+                <p id="delay-message" class="text-sm font-semibold mt-0.5">{{ estado.atraso_mensaje }}</p>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 2. TARJETAS KPI DE COMBUSTIBLE -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        <div class="kpi-card border-l-4 border-l-[#154360]">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-500 uppercase">Progreso Gerentes</span>
+                <i data-lucide="users" class="w-5 h-5 text-[#154360]"></i>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between">
+                <span id="gerentes-progress-text" class="text-xl font-black text-slate-800">{{ estado.conteo_enviadas }} de {{ estado.total_sucursales }} ({{ estado.porcentaje_gerentes }}%)</span>
+            </div>
+            <div class="w-full bg-slate-200 h-2 rounded-full mt-3 overflow-hidden">
+                <div id="gerentes-progress-bar" class="bg-[#154360] h-2 rounded-full transition-all duration-500" style="width: {{ estado.porcentaje_gerentes }}%;"></div>
+            </div>
+        </div>
+
+        <div class="kpi-card border-l-4 border-l-[#d35400]">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-500 uppercase">Asignación Base Inicial</span>
+                <i data-lucide="coins" class="w-5 h-5 text-[#d35400]"></i>
+            </div>
+            <div class="mt-2">
+                <span id="kpi-total-base" class="text-2xl font-black text-slate-800 money-display">C$ {{ "{:,.2f}".format(estado.suma_total_base) }}</span>
+            </div>
+            <span class="text-[11px] text-slate-400 font-medium mt-1 block">Presupuesto estándar semanal</span>
+        </div>
+
+        <div class="kpi-card border-l-4 border-l-[#27ae60] bg-emerald-50/30">
+            <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-emerald-800 uppercase">Total Neto Aprobado (A Pagar)</span>
+                <i data-lucide="badge-check" class="w-5 h-5 text-[#27ae60]"></i>
+            </div>
+            <div class="mt-2">
+                <span id="kpi-total-neto" class="text-2xl font-black text-emerald-700 money-display">C$ {{ "{:,.2f}".format(estado.suma_total_neto) }}</span>
+            </div>
+            <span class="text-[11px] text-emerald-600 font-medium mt-1 block">Monto final con deducciones y adiciones</span>
+        </div>
+
+    </div>
+
+    <!-- 3. CUADRÍCULA DE LAS 9 SUCURSALES (QUIÉN YA ENVIÓ Y QUIÉN FALTA) -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
+            <div>
+                <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
+                    <i data-lucide="building-2" class="w-5 h-5 text-[#154360]"></i>
+                    Estado Detallado por Sucursal (9 Sucursales)
+                </h3>
+                <span class="text-xs text-slate-500">Revisa en tiempo real qué gerente falta de enviar su informe de novedades</span>
+            </div>
+
+            {% if user.rol == 'gerente' %}
+            <a href="/novedades" class="px-4 py-2 bg-[#154360] hover:bg-[#0f2d42] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
+                <i data-lucide="edit" class="w-4 h-4"></i>
+                <span>Llenar Mi Reporte de Novedades</span>
+            </a>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {% for suc in estado.sucursales %}
+            <div class="p-4 rounded-xl border transition-all hover:shadow-md {% if suc.reporte_estado in ['ENVIADO', 'APROBADO'] %}border-emerald-200 bg-emerald-50/20{% elif suc.reporte_estado == 'BORRADOR' %}border-amber-200 bg-amber-50/20{% else %}border-red-200 bg-red-50/20{% endif %}">
+                <div class="flex items-start justify-between">
+                    <div>
+                        <h4 class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full {% if suc.reporte_estado in ['ENVIADO', 'APROBADO'] %}bg-emerald-500{% elif suc.reporte_estado == 'BORRADOR' %}bg-amber-500{% else %}bg-red-500 animate-pulse{% endif %}"></span>
+                            Sucursal {{ suc.sucursal_nombre }}
+                        </h4>
+                        <span class="block text-xs text-slate-500 mt-0.5">{{ suc.gerente_nombre or 'Gerente Asignado' }}</span>
+                        <span class="block text-[11px] text-slate-400">{{ suc.email_gerente }}</span>
+                    </div>
+
+                    <span class="badge-alfa {% if suc.reporte_estado in ['ENVIADO', 'APROBADO'] %}enviado{% elif suc.reporte_estado == 'BORRADOR' %}borrador{% else %}pendiente{% endif %}">
+                        {% if suc.reporte_estado in ['ENVIADO', 'APROBADO'] %}
+                        <i data-lucide="check" class="w-3 h-3 mr-1"></i> Enviado
+                        {% elif suc.reporte_estado == 'BORRADOR' %}
+                        <i data-lucide="edit-3" class="w-3 h-3 mr-1"></i> Borrador
+                        {% else %}
+                        <i data-lucide="clock" class="w-3 h-3 mr-1"></i> Pendiente
+                        {% endif %}
+                    </span>
+                </div>
+
+                <div class="mt-3 pt-3 border-t border-slate-200/60 flex items-center justify-between text-xs">
+                    <div>
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Colaboradores</span>
+                        <span class="font-bold text-slate-700">{{ suc.total_empleados or 0 }} Colabs</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold text-right">Total Neto</span>
+                        <span class="font-bold text-[#154360] money-display">C$ {{ "{:,.2f}".format(suc.suma_neto or 0.0) }}</span>
+                    </div>
+                </div>
+
+                <div class="mt-3 flex items-center gap-2">
+                    {% if user.rol == 'gerente' %}
+                        {% if user.sucursal_id == suc.sucursal_id %}
+                            <a href="/novedades" class="flex-1 text-center py-1.5 px-2 rounded bg-[#154360] hover:bg-[#0f2d42] text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1">
+                                <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
+                                <span>Editar Mi Sucursal</span>
+                            </a>
+                            <a href="/api/export/excel/sucursal/{{ suc.sucursal_id }}" title="Descargar Mi Reporte Excel" class="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                            </a>
+                        {% else %}
+                            <div class="w-full text-center py-1.5 px-2 rounded bg-slate-50 border border-slate-200/80 text-slate-500 text-[11px] font-medium flex items-center justify-center gap-1.5 select-none">
+                                <i data-lucide="lock" class="w-3 h-3 text-slate-400"></i>
+                                <span>Visibilidad de estado público</span>
+                            </div>
+                        {% endif %}
+                    {% elif user.rol == 'jefe_credito' %}
+                        <div class="w-full text-center py-1.5 px-2 rounded bg-blue-50/80 border border-blue-200 text-[#154360] text-[11px] font-bold flex items-center justify-center gap-1.5 select-none">
+                            <i data-lucide="shield" class="w-3.5 h-3.5 text-[#154360]"></i>
+                            <span>Supervisión Jefatura de Crédito</span>
+                        </div>
+                    {% else %}
+                        {# Admin, Brandon tienen acceso de visualización y descarga a todas las sucursales #}
+                        <a href="/novedades?sucursal_id={{ suc.sucursal_id }}" class="flex-1 text-center py-1.5 px-2 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">
+                            Ver Novedades
+                        </a>
+                        <a href="/api/export/excel/sucursal/{{ suc.sucursal_id }}" title="Descargar Reporte Excel" class="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- 4. DETALLES DE BRANDON Y DANIA -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        <!-- ESTADO DE BRANDON -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                    <div class="p-2 bg-orange-100 text-orange-800 rounded-lg">
+                        <i data-lucide="mail-check" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm">Fase 2: Solicitud de Brandon</h3>
+                        <span class="text-xs text-slate-400">Coordinación de combustible semanal</span>
+                    </div>
+                </div>
+                <span class="badge-alfa {% if estado.evento_brandon %}enviado{% else %}pendiente{% endif %}">
+                    {{ 'Completado' if estado.evento_brandon else 'Pendiente' }}
+                </span>
+            </div>
+
+            <div class="mt-4 text-xs space-y-2">
+                {% if estado.evento_brandon %}
+                <div class="p-3 bg-slate-50 rounded-lg space-y-1">
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Fecha/Hora de Envío:</span>
+                        <span class="font-bold text-slate-800">{{ estado.evento_brandon.fecha_envio }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Destinatario:</span>
+                        <span class="font-bold text-slate-800">{{ estado.evento_brandon.correo_destinatario }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Asunto:</span>
+                        <span class="font-bold text-slate-800">{{ estado.evento_brandon.asunto }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Método de Detección:</span>
+                        <span class="font-bold text-emerald-700 uppercase">{{ estado.evento_brandon.metodo }}</span>
+                    </div>
+
+                    {% if estado.evento_brandon.archivos_adjuntos %}
+                    <div class="pt-2 border-t border-slate-200 mt-2">
+                        <span class="text-slate-600 font-bold block mb-1 text-[11px] flex items-center gap-1">
+                            <i data-lucide="paperclip" class="w-3.5 h-3.5 text-orange-600"></i>
+                            Archivos PDF Adjuntos ({{ estado.evento_brandon.archivos_adjuntos|length }}):
+                        </span>
+                        <div class="flex flex-wrap gap-1.5">
+                            {% for pdf in estado.evento_brandon.archivos_adjuntos %}
+                            <a href="/api/adjuntos-brandon/download/{{ pdf }}" target="_blank" class="px-2 py-1 bg-orange-50 hover:bg-orange-100 text-orange-800 rounded font-bold text-[11px] inline-flex items-center gap-1 border border-orange-200 transition shadow-sm">
+                                <i data-lucide="file-text" class="w-3 h-3 text-orange-600"></i>
+                                <span>{{ pdf.split('_')[-1] }}</span>
+                            </a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="text-slate-500 italic">Brandon aún no ha enviado la solicitud de combustible o no se ha detectado en el correo.</p>
+                {% if user.rol in ['admin', 'brandon'] %}
+                <a href="/consolidado" class="inline-block mt-2 px-3 py-2 bg-[#d35400] hover:bg-[#b84a00] text-white font-bold rounded-lg transition text-xs">
+                    Consolidar y Enviar Solicitud Ahora
+                </a>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- ESTADO DE DANIA (MONITOREO DEL CORREO DE BRANDON) -->
+        <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                    <div class="p-2 bg-emerald-100 text-emerald-800 rounded-lg">
+                        <i data-lucide="receipt" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-sm">Fase 3: Depósito & Confirmación de Dania</h3>
+                        <span class="text-xs text-slate-400">Detección automática en el correo de Brandon</span>
+                    </div>
+                </div>
+                <span class="badge-alfa {% if estado.evento_dania %}enviado{% else %}pendiente{% endif %}">
+                    {{ 'Confirmado / Depositado' if estado.evento_dania else 'En Espera de Correo' }}
+                </span>
+            </div>
+
+            <div class="mt-4 text-xs space-y-2">
+                {% if estado.evento_dania %}
+                <div class="p-3 bg-slate-50 rounded-lg space-y-1">
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Fecha de Confirmación:</span>
+                        <span class="font-bold text-slate-800">{{ estado.evento_dania.fecha_deposito }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Remitente:</span>
+                        <span class="font-bold text-slate-800">{{ estado.evento_dania.remitente_correo or 'Dania (Tesorería)' }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Asunto:</span>
+                        <span class="font-bold text-slate-800">{{ estado.evento_dania.asunto_correo or 'Depósito Realizado' }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Método de Detección:</span>
+                        <span class="font-bold text-emerald-700 uppercase">{{ estado.evento_dania.metodo }}</span>
+                    </div>
+                    {% if estado.evento_dania.monto_depositado %}
+                    <div class="flex justify-between">
+                        <span class="text-slate-500 font-medium">Monto Depositado:</span>
+                        <span class="font-bold text-emerald-700 money-display">C$ {{ "{:,.2f}".format(estado.evento_dania.monto_depositado) }}</span>
+                    </div>
+                    {% endif %}
+                    {% if estado.evento_dania.comprobante_archivo %}
+                    <div class="pt-2 border-t border-slate-200 mt-2">
+                        <a href="/api/comprobantes/download/{{ estado.evento_dania.comprobante_archivo }}" class="text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                            <i data-lucide="paperclip" class="w-3.5 h-3.5"></i>
+                            <span>Ver/Descargar Comprobante Bancario Recibido</span>
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <p class="text-slate-500 italic">Esperando confirmación por correo de Dania en la bandeja de entrada de Brandon (<code>Adquisicionesylogistica@alfacreditsa.com</code>).</p>
+                {% if user.rol in ['admin', 'brandon'] %}
+                <div class="flex items-center gap-2 pt-2">
+                    <button type="button" onclick="sincronizarCorreo()" class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg transition text-xs flex items-center gap-1 shadow-sm">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        <span>Escanear Correo Ahora</span>
+                    </button>
+                    <a href="/deposito" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 font-bold rounded-lg transition text-xs">
+                        Validación Manual
+                    </a>
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+
+    </div>
+
+</div>
+{% endblock %}

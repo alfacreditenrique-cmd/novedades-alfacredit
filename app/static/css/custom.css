@@ -1,0 +1,229 @@
+:root {
+  --alfa-blue: #154360;
+  --alfa-blue-dark: #0e2a3c;
+  --alfa-blue-light: #2471a3;
+  --alfa-orange: #d35400;
+  --alfa-orange-light: #e67e22;
+  --alfa-green: #27ae60;
+  --alfa-green-light: #2ecc71;
+  --alfa-red: #c0392b;
+  --alfa-money: #e8f8f5;
+  --alfa-gray-bg: #f8fafc;
+  --alfa-card-border: #e2e8f0;
+}
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  background-color: var(--alfa-gray-bg);
+  color: #1e293b;
+}
+
+/* NAVBAR Y HEADER */
+.alfa-navbar {
+  background: linear-gradient(135deg, var(--alfa-blue-dark) 0%, var(--alfa-blue) 100%);
+  border-bottom: 3px solid var(--alfa-orange);
+}
+
+/* STATUS STEPPER / BARRA DE ESTADO */
+.stepper-container {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--alfa-card-border);
+}
+
+.step-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+}
+
+.step-item::after {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  width: 100%;
+  height: 4px;
+  background-color: #cbd5e1;
+  z-index: 1;
+}
+
+.step-item:last-child::after {
+  display: none;
+}
+
+.step-item.completed::after {
+  background-color: var(--alfa-green);
+}
+
+.step-item.active::after {
+  background: linear-gradient(to right, var(--alfa-green) 50%, #cbd5e1 50%);
+}
+
+.step-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background-color: #ffffff;
+  border: 3px solid #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #64748b;
+  z-index: 2;
+  transition: all 0.3s ease;
+}
+
+.step-item.active .step-circle {
+  border-color: var(--alfa-orange);
+  background-color: #fff7ed;
+  color: var(--alfa-orange);
+  box-shadow: 0 0 0 4px rgba(211, 84, 0, 0.2);
+  animation: pulse-ring 2s infinite;
+}
+
+.step-item.completed .step-circle {
+  border-color: var(--alfa-green);
+  background-color: var(--alfa-green);
+  color: #ffffff;
+  box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.2);
+}
+
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 rgba(211, 84, 0, 0.4); }
+  70% { box-shadow: 0 0 0 10px rgba(211, 84, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(211, 84, 0, 0); }
+}
+
+/* SEMÁFORO Y ALERTAS */
+.delay-banner {
+  border-left: 6px solid;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+}
+
+.delay-banner.danger {
+  background-color: #fef2f2;
+  border-color: var(--alfa-red);
+  color: #991b1b;
+}
+
+.delay-banner.warning {
+  background-color: #fffbeb;
+  border-color: var(--alfa-orange);
+  color: #92400e;
+}
+
+.delay-banner.success {
+  background-color: #f0fdf4;
+  border-color: var(--alfa-green);
+  color: #166534;
+}
+
+/* TABLA DE NOVEDADES */
+.novedades-table th {
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 0.6rem 0.3rem;
+  vertical-align: middle;
+}
+
+.th-general {
+  background-color: var(--alfa-blue);
+  color: #ffffff;
+}
+
+.th-past {
+  background-color: var(--alfa-orange);
+  color: #ffffff;
+}
+
+.th-future {
+  background-color: var(--alfa-green);
+  color: #ffffff;
+}
+
+.novedad-select {
+  font-weight: bold;
+  text-align: center;
+  text-align-last: center;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  padding: 2px 4px;
+  width: 100%;
+  font-size: 0.85rem;
+}
+
+.novedad-select.deduccion {
+  color: var(--alfa-red);
+  border-color: #fca5a5;
+  background-color: #fef2f2;
+}
+
+.novedad-select.adicion {
+  color: var(--alfa-green);
+  border-color: #86efac;
+  background-color: #f0fdf4;
+}
+
+.combustible-input {
+  background-color: var(--alfa-money);
+  border: 1px solid #a7f3d0;
+  font-weight: bold;
+  text-align: center;
+}
+
+.money-display {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-weight: 700;
+}
+
+/* BADGES DE ESTADO */
+.badge-alfa {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-alfa.enviado {
+  background-color: #dcfce7;
+  color: #15803d;
+  border: 1px solid #86efac;
+}
+
+.badge-alfa.borrador {
+  background-color: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+}
+
+.badge-alfa.pendiente {
+  background-color: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+/* CARDS GERENCIALES */
+.kpi-card {
+  border-radius: 10px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  padding: 1.25rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.06);
+}

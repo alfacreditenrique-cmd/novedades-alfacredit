@@ -1,0 +1,42 @@
+{
+  "system": {
+    "app_name": "Sistema de Novedades y Combustible - AlfaCredit S.A.",
+    "company_name": "AlfaCredit S.A.",
+    "host": "0.0.0.0",
+    "port": 8000,
+    "secret_key": "alfacredit_secret_key_super_secure_2026",
+    "debug": true
+  },
+  "email_monitor": {
+    "enabled": true,
+    "imap_server": "outlook.office365.com",
+    "imap_port": 993,
+    "use_ssl": true,
+    "brandon_email": "Adquisicionesylogistica@alfacreditsa.com",
+    "brandon_password": "",
+    "dania_email": "dania.tesoreria@alfacreditsa.com",
+    "keywords_solicitud": [
+      "solicitud de combustible",
+      "solicitud combustible",
+      "reporte de novedades",
+      "combustible semanal",
+      "novedades y combustible"
+    ],
+    "keywords_deposito": [
+      "comprobante",
+      "deposito",
+      "depósito",
+      "transferencia",
+      "pago de combustible",
+      "desembolso combustible"
+    ],
+    "auto_check_interval_seconds": 60,
+    "last_sync": null,
+    "last_status": "Sin conectar"
+  },
+  "backups": {
+    "auto_backup_enabled": true,
+    "auto_backup_interval_hours": 12,
+    "max_backups_retained": 30
+  }
+}
