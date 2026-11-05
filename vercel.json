@@ -1,5 +1,10 @@
 {
-  "version": 2,
+  "functions": {
+    "api/index.py": {
+      "includeFiles": "app/**,storage/database/**,config.json",
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
@@ -7,3 +12,4 @@
     }
   ]
 }
+

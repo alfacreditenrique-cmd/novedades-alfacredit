@@ -38,9 +38,19 @@ def get_email_config() -> Dict[str, Any]:
 def update_email_config(new_config: Dict[str, Any]) -> bool:
     """Actualiza la configuración del monitor de correo"""
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-            full_cfg = json.load(f)
+        if not os.path.exists(CONFIG_PATH):
+            get_email_config()
+        if not os.path.exists(CONFIG_PATH):
+            full_cfg = {"email_monitor": {}}
+        else:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                full_cfg = json.load(f)
+        if "email_monitor" not in full_cfg:
+            full_cfg["email_monitor"] = {}
         full_cfg["email_monitor"].update(new_config)
+        parent_dir = os.path.dirname(CONFIG_PATH)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(full_cfg, f, indent=2)
         return True

@@ -45,10 +45,7 @@ def get_db_connection():
 
     conn = sqlite3.connect(DB_PATH, timeout=20.0)
     conn.row_factory = sqlite3.Row
-    if IS_SERVERLESS:
-        conn.execute("PRAGMA journal_mode=DELETE;")
-    else:
-        conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA journal_mode=DELETE;")
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
 

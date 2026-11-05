@@ -50,5 +50,32 @@ class TestVercelEntrypoint(unittest.TestCase):
         self.assertEqual(res_login.status_code, 303)
         self.assertIn("/dashboard", res_login.headers.get("location", ""))
 
+    def test_static_assets_serving(self):
+        # Probar que los archivos estáticos responden correctamente (CSS, JS, Logo)
+        res_css = self.client.get("/static/css/custom.css")
+        self.assertEqual(res_css.status_code, 200)
+        self.assertIn("--alfa-blue", res_css.text)
+
+        res_logo = self.client.get("/static/img/logo.png")
+        self.assertEqual(res_logo.status_code, 200)
+
+    def test_dashboard_and_export_in_serverless(self):
+        from app.auth import create_session_token, COOKIE_NAME
+        conn = get_db_connection()
+        user = conn.execute("SELECT id, email FROM usuarios WHERE email = 'enrique@alfacreditsa.com'").fetchone()
+        conn.close()
+        token = create_session_token(user["id"], user["email"])
+        self.client.cookies.set(COOKIE_NAME, token)
+
+        # Dashboard
+        res_dash = self.client.get("/dashboard")
+        self.assertEqual(res_dash.status_code, 200)
+        self.assertIn("Panel de Control", res_dash.text)
+
+        # Consolidado Excel
+        res_excel = self.client.get("/api/export/excel/consolidado")
+        self.assertEqual(res_excel.status_code, 200)
+        self.assertEqual(res_excel.headers.get("content-type"), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
 if __name__ == "__main__":
     unittest.main()
