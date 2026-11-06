@@ -80,6 +80,10 @@
                     {% endif %}
 
                     {% if user.rol == 'admin' %}
+                    <a href="/admin/gestion" class="px-3 py-2 rounded-md text-sm font-semibold hover:bg-white/10 transition flex items-center space-x-1 {% if request.url.path == '/admin/gestion' %}bg-white/20 text-white{% else %}text-slate-200{% endif %}">
+                        <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
+                        <span>Panel de Gestión</span>
+                    </a>
                     <a href="/respaldos" class="px-3 py-2 rounded-md text-sm font-semibold hover:bg-white/10 transition flex items-center space-x-1 {% if request.url.path == '/respaldos' %}bg-white/20 text-white{% else %}text-slate-200{% endif %}">
                         <i data-lucide="database-backup" class="w-4 h-4"></i>
                         <span>Respaldos</span>

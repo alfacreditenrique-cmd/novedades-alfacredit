@@ -18,3 +18,7 @@ storage/adjuntos_brandon/*
 .env
 .venv
 venv/
+
+# Agent metadata
+.agents/
+

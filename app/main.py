@@ -670,6 +670,57 @@ async def respaldos_page(request: Request, user: dict = Depends(require_auth)):
         "backups": backups
     })
 
+@app.get("/admin/gestion", response_class=HTMLResponse)
+async def admin_gestion_page(request: Request):
+    user = get_current_user(request)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user["rol"] != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso denegado: se requiere rol de administrador"
+        )
+
+    sync_cloud_pull(force=False)
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # 1. Sucursales activas con datos del gerente asociado
+    c.execute('''
+    SELECT s.id, s.nombre, s.email_gerente, s.telefono, s.activa,
+           u.id as gerente_usuario_id, u.nombre as gerente_nombre
+    FROM sucursales s
+    LEFT JOIN usuarios u ON ((u.sucursal_id = s.id AND u.rol = 'gerente') OR LOWER(s.email_gerente) = LOWER(u.email))
+    ORDER BY s.id ASC
+    ''')
+    sucursales = [dict(r) for r in c.fetchall()]
+
+    # 2. Lista completa de usuarios del sistema
+    c.execute('''
+    SELECT u.id, u.nombre, u.email, u.telefono, u.rol, u.sucursal_id, u.activo, u.ultimo_acceso,
+           s.nombre as sucursal_nombre
+    FROM usuarios u
+    LEFT JOIN sucursales s ON u.sucursal_id = s.id
+    ORDER BY u.id ASC
+    ''')
+    usuarios = [dict(r) for r in c.fetchall()]
+    conn.close()
+
+    # 3. Parámetros operativos de config.json
+    cfg_email = get_email_config()
+    brandon_email = cfg_email.get("brandon_email", "")
+    dania_email = cfg_email.get("dania_email", "")
+
+    return templates.TemplateResponse(request=request, name="admin_gestion.html", context={
+        "user": user,
+        "sucursales": sucursales,
+        "usuarios": usuarios,
+        "brandon_email": brandon_email,
+        "dania_email": dania_email,
+        "cfg_email": cfg_email
+    })
+
+
 # --- ENDPOINTS API REST ---
 
 @app.get("/api/status")
@@ -1343,3 +1394,321 @@ async def api_backup_restore(filename: str, request: Request, user: dict = Depen
         raise HTTPException(status_code=403, detail="Solo administradores pueden restaurar respaldos")
     res = restaurar_respaldo(filename, usuario_email=user["email"])
     return res
+
+
+# --- ADMINISTRACIÓN GENERAL: GESTIÓN DE SUCURSALES, USUARIOS Y CONFIGURACIÓN ---
+
+async def _extract_request_payload(request: Request) -> dict:
+    """Extrae el payload de la solicitud ya sea JSON o formulario URL-encoded"""
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            return await request.json()
+        except Exception:
+            return {}
+    try:
+        form = await request.form()
+        if form:
+            return dict(form)
+    except Exception:
+        pass
+    try:
+        return await request.json()
+    except Exception:
+        pass
+    return {}
+
+
+def require_admin(request: Request) -> dict:
+    """Dependencia estricta que exige sesión activa con rol admin (403 para otros roles o sin sesión)"""
+    user = get_current_user(request)
+    if not user:
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso denegado: se requiere rol de administrador"
+        )
+    if user.get("rol") != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso denegado: se requiere rol de administrador"
+        )
+    return user
+
+
+@app.post("/api/admin/sucursal/crear")
+@app.post("/api/admin/sucursales/crear")
+async def api_admin_crear_sucursal(
+    request: Request,
+    user: dict = Depends(require_admin)
+):
+    payload = await _extract_request_payload(request)
+    nombre = str(payload.get("nombre", "")).strip()
+    email_gerente = str(payload.get("email_gerente", "")).strip().lower()
+    telefono = str(payload.get("telefono", "") or "").strip()
+    password_inicial = str(payload.get("password_inicial", "")).strip()
+
+    if not nombre or not email_gerente or not password_inicial:
+        raise HTTPException(
+            status_code=400,
+            detail="Nombre de sucursal, correo del gerente y contraseña inicial son obligatorios"
+        )
+
+    if "@" not in email_gerente or "." not in email_gerente.split("@")[-1]:
+        raise HTTPException(
+            status_code=400,
+            detail="El correo electrónico del gerente no tiene un formato válido"
+        )
+
+    if len(password_inicial) < 4:
+        raise HTTPException(
+            status_code=400,
+            detail="La contraseña inicial debe tener al menos 4 caracteres"
+        )
+
+    sync_cloud_pull(force=True)
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    # Verificar unicidad de nombre de sucursal
+    c.execute("SELECT id FROM sucursales WHERE LOWER(nombre) = LOWER(?)", (nombre,))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Ya existe una sucursal con el nombre '{nombre}'")
+
+    # Verificar unicidad de correo de gerente
+    c.execute("SELECT id FROM sucursales WHERE LOWER(email_gerente) = LOWER(?)", (email_gerente,))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="El correo del gerente ya está registrado en otra sucursal")
+
+    c.execute("SELECT id FROM usuarios WHERE LOWER(email) = LOWER(?)", (email_gerente,))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="El correo electrónico ya está registrado en el sistema")
+
+    # 1. Insertar sucursal
+    c.execute('''
+    INSERT INTO sucursales (nombre, email_gerente, telefono, activa)
+    VALUES (?, ?, ?, 1)
+    ''', (nombre, email_gerente, telefono))
+    sucursal_id = c.lastrowid
+
+    # 2. Insertar usuario con rol gerente y contraseña inicial hasheada
+    p_hash = hash_password(password_inicial)
+    gerente_nombre = f"Gerente {nombre}"
+    c.execute('''
+    INSERT INTO usuarios (email, password_hash, nombre, rol, sucursal_id, telefono, activo)
+    VALUES (?, ?, ?, 'gerente', ?, ?, 1)
+    ''', (email_gerente, p_hash, gerente_nombre, sucursal_id, telefono))
+    user_id = c.lastrowid
+
+    # 3. Poblar la plantilla de 8 colaboradores iniciales
+    cargos_base = [
+        ("GERENTE SUCURSAL", 1200.0),
+        ("SUPERVISOR", 900.0),
+        ("OFICIAL DE CREDITO 1", 750.0),
+        ("OFICIAL DE CREDITO 2", 750.0),
+        ("OFICIAL DE DESEMBOLSO", 600.0),
+        ("PROMOTOR INTERNO", 500.0),
+        ("RESP. OPERACIONES", 600.0),
+        ("CONSERJE", 300.0)
+    ]
+    for cargo, comb in cargos_base:
+        nom_ej = f"Colaborador {cargo.title()} - {nombre}"
+        c.execute('''
+        INSERT INTO colaboradores (sucursal_id, nombre, cargo, combustible_base, estado_default)
+        VALUES (?, ?, ?, ?, 'ACTIVO')
+        ''', (sucursal_id, nom_ej, cargo, comb))
+
+    conn.commit()
+
+    # 4. Asegurar ciclo semanal para crear reportes_sucursales y detalle_novedades
+    asegurar_ciclo_actual(conn)
+    conn.commit()
+    conn.close()
+
+    # 5. Sincronización a la nube y auditoría
+    sync_cloud_push()
+    log_audit(
+        user["email"], user["nombre"], user["rol"],
+        "CREAR_SUCURSAL",
+        f"Se creó la sucursal '{nombre}' (ID: {sucursal_id}) y su usuario gerente '{email_gerente}' (ID: {user_id})",
+        ip_address=request.client.host if request.client else "127.0.0.1"
+    )
+
+    return {
+        "success": True,
+        "message": f"Sucursal '{nombre}' y cuenta de gerente creadas exitosamente",
+        "sucursal_id": sucursal_id,
+        "user_id": user_id
+    }
+
+
+@app.post("/api/admin/usuario/reset-password")
+@app.post("/api/admin/usuarios/cambiar-password")
+@app.post("/api/admin/usuario/cambiar-password")
+@app.post("/api/admin/usuarios/reset-password")
+async def api_admin_reset_password(
+    request: Request,
+    user: dict = Depends(require_admin)
+):
+    payload = await _extract_request_payload(request)
+    user_id = payload.get("user_id")
+    nueva_password = payload.get("nueva_password") or payload.get("password") or payload.get("password_nueva")
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="El ID de usuario es obligatorio")
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="ID de usuario inválido")
+
+    if not nueva_password or len(str(nueva_password).strip()) < 4:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 4 caracteres")
+    nueva_password = str(nueva_password).strip()
+
+    sync_cloud_pull(force=True)
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    c.execute("SELECT id, email, nombre, rol FROM usuarios WHERE id = ?", (user_id,))
+    target_user = c.fetchone()
+    if not target_user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    new_hash = hash_password(nueva_password)
+    c.execute("UPDATE usuarios SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+    c.execute("DELETE FROM recuperacion_tokens WHERE usuario_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+    sync_cloud_push()
+    log_audit(
+        user["email"], user["nombre"], user["rol"],
+        "ADMIN_RESET_PASSWORD",
+        f"El administrador restableció la contraseña para el usuario '{target_user['email']}' (ID: {user_id})",
+        ip_address=request.client.host if request.client else "127.0.0.1"
+    )
+
+    return {
+        "success": True,
+        "message": f"Contraseña actualizada exitosamente para '{target_user['email']}'"
+    }
+
+
+@app.post("/api/admin/usuario/editar")
+@app.post("/api/admin/usuarios/editar")
+async def api_admin_editar_usuario(
+    request: Request,
+    user: dict = Depends(require_admin)
+):
+    payload = await _extract_request_payload(request)
+    user_id = payload.get("user_id")
+    nombre = str(payload.get("nombre", "")).strip()
+    email = str(payload.get("email", "")).strip().lower()
+    telefono = str(payload.get("telefono", "") or "").strip()
+
+    if not user_id:
+        raise HTTPException(status_code=400, detail="El ID de usuario es obligatorio")
+    try:
+        user_id = int(user_id)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="ID de usuario inválido")
+
+    if not nombre or not email:
+        raise HTTPException(status_code=400, detail="Nombre y correo electrónico son obligatorios")
+
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(status_code=400, detail="El correo electrónico no tiene un formato válido")
+
+    sync_cloud_pull(force=True)
+    conn = get_db_connection()
+    c = conn.cursor()
+
+    c.execute("SELECT id, email, nombre, rol, sucursal_id FROM usuarios WHERE id = ?", (user_id,))
+    target_user = c.fetchone()
+    if not target_user:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    # Verificar si el correo ya está en uso por otro usuario
+    c.execute("SELECT id FROM usuarios WHERE LOWER(email) = LOWER(?) AND id != ?", (email, user_id))
+    if c.fetchone():
+        conn.close()
+        raise HTTPException(status_code=400, detail="El correo electrónico ya está en uso por otro usuario")
+
+    # Actualizar usuario
+    c.execute('''
+    UPDATE usuarios
+    SET nombre = ?, email = ?, telefono = ?
+    WHERE id = ?
+    ''', (nombre, email, telefono, user_id))
+
+    # Si el usuario es gerente y tiene sucursal asociada, sincronizar datos de sucursal
+    if target_user["rol"] == "gerente" and target_user["sucursal_id"]:
+        c.execute('''
+        UPDATE sucursales
+        SET email_gerente = ?, telefono = ?
+        WHERE id = ?
+        ''', (email, telefono, target_user["sucursal_id"]))
+
+    conn.commit()
+    conn.close()
+
+    sync_cloud_push()
+    log_audit(
+        user["email"], user["nombre"], user["rol"],
+        "ADMIN_EDIT_USUARIO",
+        f"El administrador actualizó los datos del usuario '{email}' (ID: {user_id})",
+        ip_address=request.client.host if request.client else "127.0.0.1"
+    )
+
+    return {
+        "success": True,
+        "message": "Datos de usuario actualizados exitosamente"
+    }
+
+
+@app.post("/api/admin/config/referencias")
+@app.post("/api/admin/config/editar")
+async def api_admin_config_referencias(
+    request: Request,
+    user: dict = Depends(require_admin)
+):
+    payload = await _extract_request_payload(request)
+    brandon_email = str(payload.get("brandon_email", "")).strip().lower()
+    dania_email = str(payload.get("dania_email", "")).strip().lower()
+
+    if not brandon_email or not dania_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Los correos de referencia de Brandon y Dania son requeridos"
+        )
+
+    if "@" not in brandon_email or "@" not in dania_email:
+        raise HTTPException(
+            status_code=400,
+            detail="Uno o más correos ingresados no tienen un formato válido"
+        )
+
+    ok = update_email_config({
+        "brandon_email": brandon_email,
+        "dania_email": dania_email
+    })
+
+    if not ok:
+        raise HTTPException(status_code=500, detail="Error al escribir la configuración en el archivo config.json")
+
+    log_audit(
+        user["email"], user["nombre"], user["rol"],
+        "CONFIG_REFERENCIAS_ACTUALIZADA",
+        f"Se actualizaron los correos de referencia operativa: Brandon={brandon_email}, Dania={dania_email}",
+        ip_address=request.client.host if request.client else "127.0.0.1"
+    )
+
+    return {
+        "success": True,
+        "message": "Parámetros operativos actualizados exitosamente en config.json"
+    }
+

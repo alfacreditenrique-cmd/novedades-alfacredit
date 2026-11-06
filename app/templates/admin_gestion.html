@@ -1,0 +1,663 @@
+{% extends "base.html" %}
+
+{% block title %}Panel de Gestión y Control Administrativo | AlfaCredit S.A.{% endblock %}
+
+{% block content %}
+<div class="space-y-6">
+
+    <!-- CABECERA PRINCIPAL -->
+    <div class="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4 transition-colors">
+        <div>
+            <div class="flex items-center space-x-2">
+                <span class="px-3 py-1 rounded-full text-xs font-black bg-[#154360] text-white tracking-wider uppercase">
+                    Módulo Exclusivo Administrador
+                </span>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    Control Activo
+                </span>
+            </div>
+            <h1 class="text-2xl font-black text-slate-800 dark:text-slate-100 tracking-tight mt-2 flex items-center gap-2">
+                <i data-lucide="sliders-horizontal" class="w-6 h-6 text-[#154360] dark:text-sky-400"></i>
+                <span>Panel de Gestión y Control Administrativo</span>
+            </h1>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
+                Administración centralizada de sucursales operativas, aprovisionamiento de cuentas de gerencia, control de accesos, restablecimiento de contraseñas y parámetros de referencia operativa en <code>config.json</code>.
+            </p>
+        </div>
+
+        <!-- ACCIONES RÁPIDAS -->
+        <div class="flex items-center gap-2">
+            <a href="/respaldos" class="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition flex items-center space-x-2 border border-slate-200 dark:border-slate-600">
+                <i data-lucide="database-backup" class="w-4 h-4 text-slate-500 dark:text-slate-300"></i>
+                <span>Respaldos</span>
+            </a>
+            <a href="/auditoria" class="px-4 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition flex items-center space-x-2 border border-slate-200 dark:border-slate-600">
+                <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i>
+                <span>Auditoría</span>
+            </a>
+        </div>
+    </div>
+
+    <!-- TARJETAS DE RESUMEN METRICAS -->
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Sucursales Activas</span>
+                <div class="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1" id="stat-sucursales-count">
+                    {{ sucursales|length }}
+                </div>
+                <span class="text-[11px] text-slate-500 dark:text-slate-400">Total de agencias registradas</span>
+            </div>
+            <div class="w-12 h-12 rounded-xl bg-blue-50 dark:bg-blue-900/30 text-[#154360] dark:text-blue-400 flex items-center justify-center">
+                <i data-lucide="building-2" class="w-6 h-6"></i>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Cuentas de Usuarios</span>
+                <div class="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1" id="stat-usuarios-count">
+                    {{ usuarios|length }}
+                </div>
+                <span class="text-[11px] text-slate-500 dark:text-slate-400">Usuarios en la base de datos</span>
+            </div>
+            <div class="w-12 h-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <i data-lucide="users" class="w-6 h-6"></i>
+            </div>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+            <div>
+                <span class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Parámetros Operativos</span>
+                <div class="text-sm font-black text-slate-800 dark:text-slate-100 mt-1 truncate">
+                    Brandon & Dania
+                </div>
+                <span class="text-[11px] text-slate-500 dark:text-slate-400">Enlace activo con config.json</span>
+            </div>
+            <div class="w-12 h-12 rounded-xl bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                <i data-lucide="mail-check" class="w-6 h-6"></i>
+            </div>
+        </div>
+    </div>
+
+    <!-- PESTAÑAS DE NAVEGACIÓN -->
+    <div class="bg-white dark:bg-slate-800 p-2 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm">
+        <div class="flex flex-wrap gap-2" role="tablist">
+            <button type="button" onclick="switchAdminTab('sucursales')" id="tab-btn-sucursales" class="admin-tab-btn px-5 py-2.5 rounded-xl text-xs font-black transition flex items-center space-x-2 bg-[#154360] text-white shadow-sm">
+                <i data-lucide="building-2" class="w-4 h-4"></i>
+                <span>1. Sucursales & Gerencias</span>
+            </button>
+            <button type="button" onclick="switchAdminTab('usuarios')" id="tab-btn-usuarios" class="admin-tab-btn px-5 py-2.5 rounded-xl text-xs font-black transition flex items-center space-x-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600">
+                <i data-lucide="users" class="w-4 h-4"></i>
+                <span>2. Usuarios & Contraseñas</span>
+            </button>
+            <button type="button" onclick="switchAdminTab('config')" id="tab-btn-config" class="admin-tab-btn px-5 py-2.5 rounded-xl text-xs font-black transition flex items-center space-x-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600">
+                <i data-lucide="settings" class="w-4 h-4"></i>
+                <span>3. Parámetros Operativos (config.json)</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- PESTAÑA 1: SUCURSALES -->
+    <div id="tab-content-sucursales" class="space-y-6">
+        <!-- FORMULARIO DE ALTA DE SUCURSAL -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <div class="w-9 h-9 rounded-xl bg-blue-50 dark:bg-blue-900/40 text-[#154360] dark:text-blue-400 flex items-center justify-center">
+                    <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-slate-800 dark:text-slate-100">Registrar Nueva Sucursal y Crear Cuenta de Gerente</h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">El sistema creará la sucursal, la cuenta de gerente vinculada, los 8 puestos de colaboradores y su reporte semanal de novedades.</p>
+                </div>
+            </div>
+
+            <form id="form-crear-sucursal" onsubmit="handleCrearSucursal(event)" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nombre de la Sucursal <span class="text-red-500">*</span></label>
+                    <input type="text" id="sucursal-nombre" required placeholder="Ej. Granada" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#154360]">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Correo Electrónico del Gerente <span class="text-red-500">*</span></label>
+                    <input type="email" id="sucursal-email" required placeholder="gerente.granada@alfacreditsa.com" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#154360]">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Teléfono de Contacto</label>
+                    <input type="text" id="sucursal-telefono" placeholder="Ej. 2552-0010 o 8888-1234" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#154360]">
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Contraseña Inicial <span class="text-red-500">*</span></label>
+                    <input type="text" id="sucursal-password" required placeholder="Contraseña segura" value="AlfaCredit2026!" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-[#154360]">
+                </div>
+
+                <div class="md:col-span-2 lg:col-span-4 flex justify-end">
+                    <button type="submit" id="btn-submit-sucursal" class="px-6 py-2.5 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-black rounded-xl shadow-md transition flex items-center space-x-2">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        <span>DAR DE ALTA SUCURSAL Y ACTIVAR GERENCIA</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- LISTADO DE SUCURSALES -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div class="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                <div>
+                    <h3 class="font-bold text-slate-800 dark:text-slate-100 text-sm">Sucursales Oficiales Registradas</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Total de agencias activas en el pipeline de combustible</p>
+                </div>
+                <span class="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                    {{ sucursales|length }} Registradas
+                </span>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-slate-50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 font-bold uppercase text-[11px] border-b border-slate-200 dark:border-slate-700">
+                            <th class="p-3">ID</th>
+                            <th class="p-3">Sucursal</th>
+                            <th class="p-3">Gerente Asociado</th>
+                            <th class="p-3">Correo Electrónico</th>
+                            <th class="p-3">Teléfono</th>
+                            <th class="p-3 text-center">Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700" id="tabla-sucursales-body">
+                        {% for s in sucursales %}
+                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition">
+                            <td class="p-3 font-mono text-slate-500 dark:text-slate-400 font-bold">#{{ s.id }}</td>
+                            <td class="p-3 font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                <i data-lucide="building" class="w-4 h-4 text-[#154360] dark:text-sky-400"></i>
+                                <span>{{ s.nombre }}</span>
+                            </td>
+                            <td class="p-3 text-slate-700 dark:text-slate-300 font-medium">
+                                {{ s.gerente_nombre or 'Gerente ' ~ s.nombre }}
+                            </td>
+                            <td class="p-3 font-mono text-slate-600 dark:text-slate-400">{{ s.email_gerente }}</td>
+                            <td class="p-3 text-slate-600 dark:text-slate-400 font-mono">{{ s.telefono or '—' }}</td>
+                            <td class="p-3 text-center">
+                                {% if s.activa == 1 %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                    ACTIVA
+                                </span>
+                                {% else %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400">
+                                    INACTIVA
+                                </span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- PESTAÑA 2: USUARIOS Y CONTRASEÑAS -->
+    <div id="tab-content-usuarios" class="space-y-6 hidden">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+            <div class="p-5 border-b border-slate-100 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                <div>
+                    <h3 class="font-bold text-slate-800 dark:text-slate-100 text-sm">Directorio de Cuentas de Acceso al Sistema</h3>
+                    <p class="text-[11px] text-slate-500 dark:text-slate-400">Modifica datos de perfil o restablece contraseñas inmediatamente con un solo clic.</p>
+                </div>
+                <div class="w-full sm:w-64">
+                    <div class="relative">
+                        <i data-lucide="search" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+                        <input type="text" id="filtro-usuarios" oninput="filtrarUsuarios()" placeholder="Buscar usuario..." class="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-[#154360]">
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-slate-50 dark:bg-slate-900/50 text-slate-600 dark:text-slate-400 font-bold uppercase text-[11px] border-b border-slate-200 dark:border-slate-700">
+                            <th class="p-3">ID</th>
+                            <th class="p-3">Nombre</th>
+                            <th class="p-3">Correo Electrónico</th>
+                            <th class="p-3">Teléfono</th>
+                            <th class="p-3">Rol</th>
+                            <th class="p-3">Sucursal Asignada</th>
+                            <th class="p-3">Último Acceso</th>
+                            <th class="p-3 text-center">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 dark:divide-slate-700" id="tabla-usuarios-body">
+                        {% for u in usuarios %}
+                        <tr class="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition user-row" data-nombre="{{ u.nombre|lower }}" data-email="{{ u.email|lower }}">
+                            <td class="p-3 font-mono text-slate-500 dark:text-slate-400 font-bold">#{{ u.id }}</td>
+                            <td class="p-3 font-bold text-slate-800 dark:text-slate-100">{{ u.nombre }}</td>
+                            <td class="p-3 font-mono text-slate-600 dark:text-slate-400">{{ u.email }}</td>
+                            <td class="p-3 text-slate-600 dark:text-slate-400 font-mono">{{ u.telefono or '—' }}</td>
+                            <td class="p-3">
+                                {% if u.rol == 'admin' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-300">
+                                    ADMINISTRADOR
+                                </span>
+                                {% elif u.rol == 'gerente' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                    GERENTE
+                                </span>
+                                {% elif u.rol == 'brandon' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">
+                                    COORDINACIÓN LOGÍSTICA
+                                </span>
+                                {% elif u.rol == 'jefe_credito' %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300">
+                                    JEFE DE CRÉDITO
+                                </span>
+                                {% else %}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300">
+                                    {{ u.rol|upper }}
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td class="p-3 text-slate-600 dark:text-slate-400 font-medium">
+                                {{ u.sucursal_nombre or 'Central / Sin sucursal' }}
+                            </td>
+                            <td class="p-3 font-mono text-slate-500 dark:text-slate-400 text-[11px]">
+                                {{ u.ultimo_acceso or 'Sin registro' }}
+                            </td>
+                            <td class="p-3 text-center space-x-1 whitespace-nowrap">
+                                <button type="button" onclick="abrirModalEditar({{ u.id }}, '{{ u.nombre|escape }}', '{{ u.email|escape }}', '{{ u.telefono or '' }}')" class="inline-flex items-center space-x-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold rounded-lg transition border border-slate-200 dark:border-slate-600 text-xs" title="Editar Nombre, Correo y Teléfono">
+                                    <i data-lucide="edit-3" class="w-3.5 h-3.5 text-blue-600"></i>
+                                    <span>Editar</span>
+                                </button>
+                                <button type="button" onclick="abrirModalResetPassword({{ u.id }}, '{{ u.email|escape }}', '{{ u.nombre|escape }}')" class="inline-flex items-center space-x-1 px-2.5 py-1 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/60 text-red-700 dark:text-red-300 font-bold rounded-lg transition border border-red-200 dark:border-red-800 text-xs" title="Cambiar Contraseña">
+                                    <i data-lucide="key" class="w-3.5 h-3.5 text-red-600"></i>
+                                    <span>Contraseña</span>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- PESTAÑA 3: PARÁMETROS OPERATIVOS (CONFIG.JSON) -->
+    <div id="tab-content-config" class="space-y-6 hidden">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm p-6">
+            <div class="flex items-center space-x-3 mb-4 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <div class="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+                    <i data-lucide="sliders" class="w-5 h-5"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-slate-800 dark:text-slate-100">Parámetros Operativos de Seguimiento en <code>config.json</code></h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Configuración de los buzones de correo institucionales utilizados para la sincronización automática de combustible y comprobantes bancarios.</p>
+                </div>
+            </div>
+
+            <!-- TARJETA EXPLICATIVA -->
+            <div class="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 p-4 rounded-xl mb-6 text-xs text-amber-900 dark:text-amber-200">
+                <div class="flex items-start space-x-2">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5"></i>
+                    <div>
+                        <span class="font-bold">Impacto Operativo de estos correos:</span>
+                        <ul class="list-disc list-inside mt-1 space-y-1 text-slate-700 dark:text-slate-300">
+                            <li><b>Correo de Brandon (Logística):</b> La plataforma inicia sesión por IMAP en este buzón para detectar automáticamente los correos que Brandon envía a los proveedores de combustible con las solicitudes semanales aprobadas.</li>
+                            <li><b>Correo de Dania (Tesorería):</b> La plataforma filtra y asocia los comprobantes de depósito bancario adjuntos que provengan de esta dirección para marcar la FASE 3 como completada.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <form id="form-config-referencias" onsubmit="handleGuardarConfig(event)" class="space-y-4 max-w-2xl">
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Correo Operativo de Brandon (Coordinación de Logística y Combustible) <span class="text-red-500">*</span>
+                    </label>
+                    <div class="relative">
+                        <i data-lucide="mail" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+                        <input type="email" id="config-brandon-email" required value="{{ brandon_email }}" placeholder="adquisicionesylogistica@alfacreditsa.com" class="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-[#154360]">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Correo Operativo de Dania (Tesorería General) <span class="text-red-500">*</span>
+                    </label>
+                    <div class="relative">
+                        <i data-lucide="mail" class="w-4 h-4 absolute left-3 top-2.5 text-slate-400"></i>
+                        <input type="email" id="config-dania-email" required value="{{ dania_email }}" placeholder="dania.tesoreria@alfacreditsa.com" class="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-mono focus:outline-none focus:ring-2 focus:ring-[#154360]">
+                    </div>
+                </div>
+
+                <div class="pt-2">
+                    <button type="submit" id="btn-submit-config" class="px-6 py-2.5 bg-[#154360] hover:bg-[#0e2a3c] text-white text-xs font-black rounded-xl shadow-md transition flex items-center space-x-2">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        <span>GUARDAR PARÁMETROS EN CONFIG.JSON</span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// --- GESTIÓN DE PESTAÑAS ---
+function switchAdminTab(tabName) {
+    const tabs = ['sucursales', 'usuarios', 'config'];
+    tabs.forEach(t => {
+        const content = document.getElementById(`tab-content-${t}`);
+        const btn = document.getElementById(`tab-btn-${t}`);
+        if (t === tabName) {
+            content.classList.remove('hidden');
+            btn.className = 'admin-tab-btn px-5 py-2.5 rounded-xl text-xs font-black transition flex items-center space-x-2 bg-[#154360] text-white shadow-sm';
+        } else {
+            content.classList.add('hidden');
+            btn.className = 'admin-tab-btn px-5 py-2.5 rounded-xl text-xs font-black transition flex items-center space-x-2 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600';
+        }
+    });
+    lucide.createIcons();
+}
+
+// --- FILTRO DE BÚSQUEDA DE USUARIOS ---
+function filtrarUsuarios() {
+    const query = (document.getElementById('filtro-usuarios').value || '').toLowerCase().trim();
+    const rows = document.querySelectorAll('.user-row');
+    rows.forEach(r => {
+        const nombre = r.getAttribute('data-nombre') || '';
+        const email = r.getAttribute('data-email') || '';
+        if (nombre.includes(query) || email.includes(query)) {
+            r.style.display = '';
+        } else {
+            r.style.display = 'none';
+        }
+    });
+}
+
+// --- ALTA DE SUCURSAL ---
+async function handleCrearSucursal(e) {
+    e.preventDefault();
+    const nombre = document.getElementById('sucursal-nombre').value.trim();
+    const email = document.getElementById('sucursal-email').value.trim();
+    const tel = document.getElementById('sucursal-telefono').value.trim();
+    const pass = document.getElementById('sucursal-password').value.trim();
+
+    if (!nombre || !email || !pass) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Campos requeridos',
+            text: 'Debes ingresar el nombre de la sucursal, el correo del gerente y la contraseña inicial.'
+        });
+        return;
+    }
+
+    const confirmRes = await Swal.fire({
+        title: `¿Registrar Sucursal ${nombre}?`,
+        html: `Se creará la sucursal <b>${nombre}</b>, la cuenta de gerente para <b>${email}</b> y se inicializará su reporte de novedades semanal.`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#27ae60',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, crear sucursal',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    Swal.fire({
+        title: 'Creando sucursal...',
+        text: 'Registrando en base de datos y generando plantilla...',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch('/api/admin/sucursal/crear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                nombre: nombre,
+                email_gerente: email,
+                telefono: tel,
+                password_inicial: pass
+            })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || data.message || 'Error al crear la sucursal');
+        }
+
+        await Swal.fire({
+            icon: 'success',
+            title: '¡Sucursal Registrada!',
+            text: data.message || `La sucursal ${nombre} ha sido creada exitosamente.`,
+            confirmButtonColor: '#154360'
+        });
+
+        window.location.reload();
+    } catch (err) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error en el Registro',
+            text: err.message,
+            confirmButtonColor: '#c0392b'
+        });
+    }
+}
+
+// --- MODAL EDITAR USUARIO ---
+async function abrirModalEditar(userId, currentNombre, currentEmail, currentTel) {
+    const { value: formValues } = await Swal.fire({
+        title: 'Editar Datos de Usuario',
+        html: `
+            <div class="text-left space-y-3 text-xs pt-2">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Nombre Completo:</label>
+                    <input id="swal-edit-nombre" class="swal2-input !m-0 !w-full !text-xs !py-2" value="${currentNombre}" placeholder="Nombre del usuario">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Correo Electrónico:</label>
+                    <input id="swal-edit-email" class="swal2-input !m-0 !w-full !text-xs !py-2" value="${currentEmail}" placeholder="correo@alfacreditsa.com">
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">Teléfono:</label>
+                    <input id="swal-edit-tel" class="swal2-input !m-0 !w-full !text-xs !py-2" value="${currentTel}" placeholder="Número de contacto">
+                </div>
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar Cambios',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#154360',
+        preConfirm: () => {
+            const n = document.getElementById('swal-edit-nombre').value.trim();
+            const e = document.getElementById('swal-edit-email').value.trim();
+            const t = document.getElementById('swal-edit-tel').value.trim();
+            if (!n || !e) {
+                Swal.showValidationMessage('El nombre y el correo electrónico son obligatorios');
+                return false;
+            }
+            return { nombre: n, email: e, telefono: t };
+        }
+    });
+
+    if (!formValues) return;
+
+    Swal.fire({
+        title: 'Guardando...',
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch('/api/admin/usuario/editar', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                nombre: formValues.nombre,
+                email: formValues.email,
+                telefono: formValues.telefono
+            })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || data.message || 'Error al actualizar usuario');
+        }
+
+        await Swal.fire({
+            icon: 'success',
+            title: 'Usuario Actualizado',
+            text: data.message || 'Los datos han sido actualizados exitosamente.',
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+        window.location.reload();
+    } catch (err) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error al Actualizar',
+            text: err.message,
+            confirmButtonColor: '#c0392b'
+        });
+    }
+}
+
+// --- MODAL RESTABLECER CONTRASEÑA ---
+async function abrirModalResetPassword(userId, userEmail, userNombre) {
+    const { value: nuevaPassword } = await Swal.fire({
+        title: 'Restablecer Contraseña',
+        html: `
+            <div class="text-left text-xs space-y-2 pt-2">
+                <p>Establece una nueva contraseña para la cuenta:</p>
+                <div class="p-2.5 bg-slate-100 rounded-lg font-bold text-slate-800">
+                    ${userNombre} <span class="text-slate-500 font-mono text-[11px]">(${userEmail})</span>
+                </div>
+                <label class="block font-bold text-slate-700 mt-3 mb-1">Nueva Contraseña:</label>
+                <input id="swal-new-password" type="text" class="swal2-input !m-0 !w-full !text-xs !py-2 !font-mono" placeholder="Ingresa contraseña (mínimo 4 caracteres)">
+            </div>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Actualizar Contraseña',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#c0392b',
+        preConfirm: () => {
+            const p = document.getElementById('swal-new-password').value.trim();
+            if (!p || p.length < 4) {
+                Swal.showValidationMessage('La contraseña debe tener al menos 4 caracteres');
+                return false;
+            }
+            return p;
+        }
+    });
+
+    if (!nuevaPassword) return;
+
+    Swal.fire({
+        title: 'Actualizando contraseña...',
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch('/api/admin/usuario/reset-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId,
+                nueva_password: nuevaPassword
+            })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || data.message || 'Error al actualizar contraseña');
+        }
+
+        await Swal.fire({
+            icon: 'success',
+            title: '¡Contraseña Actualizada!',
+            html: `La contraseña para <b>${userEmail}</b> ha sido restablecida exitosamente.<br>El usuario ya puede iniciar sesión de inmediato con la nueva clave.`,
+            confirmButtonColor: '#154360'
+        });
+    } catch (err) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: err.message,
+            confirmButtonColor: '#c0392b'
+        });
+    }
+}
+
+// --- GUARDAR PARÁMETROS OPERATIVOS ---
+async function handleGuardarConfig(e) {
+    e.preventDefault();
+    const brandonEmail = document.getElementById('config-brandon-email').value.trim();
+    const daniaEmail = document.getElementById('config-dania-email').value.trim();
+
+    if (!brandonEmail || !daniaEmail) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Campos requeridos',
+            text: 'Debes ingresar los correos de referencia de Brandon y Dania.'
+        });
+        return;
+    }
+
+    const confirmRes = await Swal.fire({
+        title: '¿Actualizar Parámetros Operativos?',
+        html: `Se actualizarán en <code>config.json</code>:<br><b>Brandon:</b> ${brandonEmail}<br><b>Dania:</b> ${daniaEmail}`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#154360',
+        cancelButtonColor: '#64748b',
+        confirmButtonText: 'Sí, guardar',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirmRes.isConfirmed) return;
+
+    Swal.fire({
+        title: 'Guardando configuración...',
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch('/api/admin/config/referencias', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                brandon_email: brandonEmail,
+                dania_email: daniaEmail
+            })
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || data.message || 'Error al actualizar configuración');
+        }
+
+        await Swal.fire({
+            icon: 'success',
+            title: 'Configuración Guardada',
+            text: data.message || 'Parámetros actualizados exitosamente en config.json.',
+            confirmButtonColor: '#154360'
+        });
+    } catch (err) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: err.message,
+            confirmButtonColor: '#c0392b'
+        });
+    }
+}
+</script>
+{% endblock %}

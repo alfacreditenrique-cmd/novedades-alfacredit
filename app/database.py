@@ -276,11 +276,25 @@ def init_db():
         nombre TEXT NOT NULL,
         rol TEXT NOT NULL, -- 'admin', 'gerente', 'brandon', 'dania'
         sucursal_id INTEGER REFERENCES sucursales(id),
+        telefono TEXT,
         activo INTEGER DEFAULT 1,
         ultimo_acceso TEXT,
         creado_en TEXT DEFAULT CURRENT_TIMESTAMP
     )
     ''')
+
+    # Migración segura: agregar telefono a usuarios si no existe
+    try:
+        c.execute("PRAGMA table_info(usuarios)")
+        _cols = [r[1] for r in c.fetchall()]
+        if "telefono" not in _cols:
+            c.execute("ALTER TABLE usuarios ADD COLUMN telefono TEXT;")
+    except Exception:
+        try:
+            c.execute("ALTER TABLE usuarios ADD COLUMN telefono TEXT;")
+        except Exception:
+            pass
+
 
     # 3. Colaboradores Maestros
     c.execute('''
@@ -707,7 +721,7 @@ def asegurar_ciclo_actual(conn=None):
 
             # Cargar colaboradores de la sucursal al detalle
             c.execute("SELECT * FROM colaboradores WHERE sucursal_id = ? AND activo = 1 ORDER BY id ASC", (suc["id"],))
-            colabs = c.fetchall()
+            colabs = [dict(r) for r in c.fetchall()]
             suma_base = sum(float(col.get("combustible_base", 0.0) or 0.0) for col in colabs)
             
             c.execute('''
