@@ -16,6 +16,9 @@ from app.database import init_db, get_db_connection
 from reset_fresh_state import reset_to_fresh_real_state
 
 def test_all():
+    os.environ["DISABLE_CLOUDSYNC"] = "1"
+    seed_db = os.path.join(BASE_DIR, "storage", "database", "alfacredit_novedades.db")
+    backup_bytes = open(seed_db, "rb").read() if os.path.exists(seed_db) else None
     reset_to_fresh_real_state()
     client = TestClient(app)
 
@@ -164,6 +167,10 @@ def test_all():
     print(f"✅ Estado del pipeline en limpio verificado: {st['conteo_enviadas']}/{st['total_sucursales']} enviadas (Fase 1)")
 
     print("\n🎉 VALIDACIÓN COMPLETA: TODOS LOS SISTEMAS, PRIVACIDADES, CORREOS @ALFACREDITSA.COM Y RECUPERACIÓN FUNCIONAN AL 100%")
+    if backup_bytes and os.path.exists(seed_db):
+        with open(seed_db, "wb") as f:
+            f.write(backup_bytes)
+    os.environ.pop("DISABLE_CLOUDSYNC", None)
 
 if __name__ == "__main__":
     test_all()

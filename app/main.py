@@ -480,6 +480,7 @@ async def dashboard_page(
     ciclo_id: Optional[int] = None,
     user: dict = Depends(require_auth)
 ):
+    sync_cloud_pull(force=False)
     conn = get_db_connection()
     c = conn.cursor()
     c.execute('''
@@ -766,8 +767,57 @@ async def api_save_novedades(request: Request, payload: dict, user: dict = Depen
     conn.commit()
     conn.close()
 
-    # Persistir inmediatamente a la nube para que ninguna otra sucursal sobreescriba ni borre este reporte
-    sync_cloud_push(user.get("email", "gerente"))
+    def reapply_this_report(target_db_file: str):
+        try:
+            r_conn = sqlite3.connect(target_db_file, timeout=20.0)
+            r_c = r_conn.cursor()
+            r_c.execute('''
+                SELECT r.id FROM reportes_sucursales r
+                WHERE r.sucursal_id = ? AND r.ciclo_id = (SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1)
+            ''', (rep["sucursal_id"],))
+            target_rep_row = r_c.fetchone()
+            target_rep_id = target_rep_row[0] if target_rep_row else reporte_id
+
+            r_c.execute("DELETE FROM detalle_novedades WHERE reporte_id = ?", (target_rep_id,))
+            for f in filas:
+                nom = f.get("nombre", "").strip()
+                if not nom:
+                    continue
+                carg = f.get("cargo", "OFICIAL DE CREDITO")
+                est = f.get("estado", "ACTIVO")
+                c_base = float(f.get("combustible_base", 0.0) or 0.0)
+                d_pas = f.get("dias_pas", [""] * 6)
+                d_fut = f.get("dias_fut", [""] * 6)
+                c_calc = calcular_fila_novedades(c_base, d_pas, d_fut)
+                r_c.execute('''
+                INSERT INTO detalle_novedades (
+                    reporte_id, colaborador_id, nombre, cargo, estado,
+                    combustible_base, factor_total, deduccion_ajuste, total_neto,
+                    dias_pas_json, dias_fut_json, talla, req, obs
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    target_rep_id, f.get("colaborador_id"), nom, carg, est,
+                    c_calc["combustible_base"], c_calc["factor_total"], c_calc["deduccion_mostrada"], c_calc["total_neto"],
+                    json.dumps(d_pas), json.dumps(d_fut), f.get("talla", ""), f.get("req", ""), f.get("obs", "")
+                ))
+            r_c.execute('''
+            UPDATE reportes_sucursales 
+            SET estado = ?, enviado_en = ?, total_empleados = ?,
+                suma_base = ?, suma_ajustes = ?, suma_neto = ?,
+                usuario_id = ?, actualizado_en = CURRENT_TIMESTAMP
+            WHERE id = ?
+            ''', (
+                nuevo_estado_rep, fecha_envio, len(filas),
+                round(suma_base, 2), round(suma_ajustes, 2), round(suma_neto, 2),
+                user["id"], target_rep_id
+            ))
+            r_conn.commit()
+            r_conn.close()
+        except Exception as e_reapply:
+            print(f"[REAPPLY MERGE ERROR]: {e_reapply}")
+
+    # Persistir inmediatamente a la nube con resolución concurrente para que ninguna otra sucursal sobreescriba este reporte
+    sync_cloud_push(user.get("email", "gerente"), reapply_fn=reapply_this_report)
 
     accion_txt = "ENVIO_REPORTE" if es_envio_final else "GUARDAR_BORRADOR"
     log_audit(

@@ -191,14 +191,14 @@ def sync_cloud_pull(force: bool = False) -> bool:
     return False
 
 
-def sync_cloud_push(user_email: str = "sistema") -> bool:
+def sync_cloud_push(user_email: str = "sistema", reapply_fn = None) -> bool:
     """Sube la base de datos local al Cloud Store centralizado"""
     if is_using_turso():
         return False
     try:
         from app.cloud_sync import is_cloud_sync_enabled, push_db_to_cloud
         if is_cloud_sync_enabled():
-            return push_db_to_cloud(get_db_path(), user_email=user_email)
+            return push_db_to_cloud(get_db_path(), user_email=user_email, reapply_fn=reapply_fn)
     except Exception as e:
         print(f"[CLOUDSYNC PUSH NOTICE]: {e}")
     return False

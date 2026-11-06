@@ -21,8 +21,13 @@ class TestAlfaCreditPlatform(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
+        os.environ["DISABLE_CLOUDSYNC"] = "1"
         init_db()
         cls.client = TestClient(app)
+
+    @classmethod
+    def tearDownClass(cls):
+        os.environ.pop("DISABLE_CLOUDSYNC", None)
 
     def test_01_database_initialization(self):
         """Verifica que las tablas, 8 sucursales y usuarios existan en la BD"""
