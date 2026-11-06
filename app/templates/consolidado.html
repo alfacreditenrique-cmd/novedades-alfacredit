@@ -13,10 +13,15 @@
                 <span class="text-xs text-slate-500 font-semibold">Corte: <b>{{ estado.ciclo.fecha_sabado }}</b></span>
             </div>
             <h1 class="text-xl font-black text-slate-800 tracking-tight mt-1">Consolidado General de Combustible (Brandon)</h1>
-            <p class="text-xs text-slate-500">Revisión global de las 9 sucursales y emisión formal de la solicitud a Finanzas (Dania)</p>
+            <p class="text-xs text-slate-500">Revisión global de las {{ estado.total_sucursales }} sucursales y emisión formal de la solicitud a Finanzas (Dania)</p>
         </div>
 
-        <div class="flex items-center space-x-3">
+        <div class="flex items-center flex-wrap gap-2">
+            <button onclick="realizarCorteSemanal({{ estado.fase_actual }})" class="px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm {% if estado.fase_actual == 4 %}bg-purple-700 hover:bg-purple-800 text-white shadow-purple-500/30 ring-2 ring-purple-400/50 animate-pulse{% else %}bg-slate-200 hover:bg-slate-300 text-slate-700{% endif %}" title="{% if estado.fase_actual == 4 %}Fondos Despachados listos: Realizar corte e iniciar nuevo ciclo{% else %}Disponible una vez completada la Fase 4 (Fondos Despachados){% endif %}">
+                <i data-lucide="scissors" class="w-4 h-4"></i>
+                <span>Corte Semanal / Iniciar Nuevo Ciclo</span>
+            </button>
+
             <a href="/api/export/excel/consolidado" class="px-4 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
                 <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
                 <span>Descargar Libro Excel Consolidado</span>
@@ -24,7 +29,27 @@
         </div>
     </div>
 
-    <!-- TABLA RESUMEN DE LAS 9 SUCURSALES -->
+    {% if estado.fase_actual == 4 %}
+    <!-- BANNER DE CIERRE Y CORTE SEMANAL CUANDO FASE 4 ESTÁ LISTA -->
+    <div class="bg-gradient-to-r from-purple-900 to-indigo-900 text-white p-5 rounded-xl shadow-md border border-purple-400/30 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+        <div class="flex items-center space-x-3">
+            <div class="p-3 bg-purple-500/30 rounded-xl shrink-0">
+                <i data-lucide="check-circle-2" class="w-7 h-7 text-emerald-400"></i>
+            </div>
+            <div>
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 uppercase tracking-wide">Fase 4 Completada &bull; Fondos Despachados</span>
+                <h3 class="text-base font-black tracking-tight mt-1">¡El ciclo semanal actual ha concluido con éxito!</h3>
+                <p class="text-xs text-purple-200 mt-0.5">Dania ha registrado el comprobante de depósito y los fondos han sido despachados. Puedes realizar el corte semanal para archivar la semana y reiniciar en limpio las casillas de novedades preservando los colaboradores para los gerentes.</p>
+            </div>
+        </div>
+        <button onclick="realizarCorteSemanal(4)" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 text-xs font-black rounded-lg shadow-lg hover:shadow-xl transition flex items-center space-x-2 shrink-0">
+            <i data-lucide="scissors" class="w-4 h-4"></i>
+            <span>REALIZAR CORTE SEMANAL AHORA</span>
+        </button>
+    </div>
+    {% endif %}
+
+    <!-- TABLA RESUMEN DE LAS {{ estado.total_sucursales }} SUCURSALES -->
     <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div class="p-4 border-b border-slate-100 flex items-center justify-between">
             <h3 class="font-bold text-slate-800 text-sm">Resumen de Asignación por Sucursal</h3>

@@ -29,18 +29,20 @@
     <!-- NAVBAR CORPORATIVO -->
     <header class="alfa-navbar text-white shadow-lg sticky top-0 z-50">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex items-center justify-between h-16">
+            <div class="flex items-center justify-between min-h-[4.25rem] py-2">
                 <!-- LOGO Y TÍTULO -->
-                <div class="flex items-center space-x-3">
-                    <a href="/dashboard" class="flex items-center space-x-2">
-                        <img src="/static/img/logo.png" alt="AlfaCredit Logo" class="h-10 w-auto bg-white rounded p-1 shadow-sm" onerror="this.style.display='none'">
-                        <div>
-                            <span class="text-lg font-black tracking-wider text-white">ALFACREDIT S.A.</span>
-                            <span class="block text-xs font-semibold text-orange-300">Control de Novedades & Combustible</span>
+                <div class="flex items-center space-x-3 py-0.5">
+                    <a href="/dashboard" class="flex items-center gap-3.5 group select-none transition-transform hover:opacity-95">
+                        <div class="h-11 w-11 sm:h-12 sm:w-12 bg-white rounded-xl p-1.5 shadow-md flex items-center justify-center shrink-0 border border-white/20 transition-transform group-hover:scale-105 overflow-hidden">
+                            <img src="/static/img/logo.png" alt="AlfaCredit Logo" class="h-full w-full object-contain" onerror="this.onerror=null; this.parentElement.innerHTML='<span class=\'font-black text-[#154360] text-sm\'>AC</span>';">
+                        </div>
+                        <div class="flex flex-col justify-center min-w-0">
+                            <span class="text-base sm:text-lg font-black tracking-wider text-white leading-tight uppercase drop-shadow-sm">ALFACREDIT S.A.</span>
+                            <span class="text-[11px] sm:text-xs font-bold text-orange-300 tracking-wide leading-tight mt-0.5 truncate drop-shadow-sm">Control de Novedades &amp; Combustible</span>
                         </div>
                     </a>
                     <!-- INDICADOR EN VIVO -->
-                    <span id="ws-live-indicator" class="hidden inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 animate-pulse ml-2">
+                    <span id="ws-live-indicator" class="hidden inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/40 animate-pulse ml-1">
                         <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5"></span> En Vivo
                     </span>
                 </div>

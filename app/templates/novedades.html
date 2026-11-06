@@ -5,6 +5,28 @@
 {% block content %}
 <div class="space-y-5">
 
+    {% if bloqueado %}
+    <!-- BANNER DE BLOQUEO DE NOVEDADES -->
+    <div class="p-4 bg-amber-500/15 border-2 border-amber-500/50 rounded-xl flex items-center justify-between text-amber-900 dark:text-amber-200 shadow-sm animate-pulse">
+        <div class="flex items-center space-x-3">
+            <div class="p-2.5 bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded-lg shrink-0">
+                <i data-lucide="lock" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <span class="font-black text-sm block uppercase tracking-wide flex items-center gap-2">
+                    Periodo de Novedades Bloqueado &bull; Modo Solo Lectura
+                </span>
+                <p class="text-xs font-semibold text-amber-800 dark:text-amber-300 mt-0.5">
+                    {{ bloqueado_motivo }}
+                </p>
+            </div>
+        </div>
+        <span class="px-3 py-1 bg-amber-600 text-white rounded-lg text-xs font-black uppercase shrink-0 hidden sm:inline-block">
+            Edición Inhabilitada
+        </span>
+    </div>
+    {% endif %}
+
     <!-- BARRA SUPERIOR DE INFORMACIÓN Y ACCIONES -->
     <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
@@ -13,6 +35,11 @@
                 <span class="badge-alfa {% if reporte.estado in ['ENVIADO', 'APROBADO'] %}enviado{% elif reporte.estado == 'BORRADOR' %}borrador{% else %}pendiente{% endif %}">
                     Estado: {{ reporte.estado }}
                 </span>
+                {% if bloqueado %}
+                <span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-600 text-white flex items-center gap-1">
+                    <i data-lucide="lock" class="w-3 h-3"></i> Bloqueado
+                </span>
+                {% endif %}
             </div>
             <h1 class="text-xl font-black text-slate-800 tracking-tight mt-1">Informe de Asistencias, Novedades y Combustible</h1>
             <p class="text-xs text-slate-500">Fecha Corte: <b>{{ ciclo.fecha_sabado }}</b> | Gerente: <b>{{ sucursal.email_gerente }}</b></p>
@@ -31,6 +58,7 @@
             </div>
             {% endif %}
 
+            {% if not bloqueado %}
             <button type="button" onclick="agregarFilaEmpleado()" class="px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
                 <i data-lucide="user-plus" class="w-4 h-4"></i>
                 <span>+ Empleado</span>
@@ -45,6 +73,12 @@
                 <i data-lucide="send" class="w-4 h-4"></i>
                 <span>Enviar Reporte Oficial</span>
             </button>
+            {% else %}
+            <div class="px-3 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-lg text-xs font-bold flex items-center gap-1.5">
+                <i data-lucide="lock" class="w-4 h-4 text-amber-600"></i>
+                <span>Edición Bloqueada (Solo Lectura)</span>
+            </div>
+            {% endif %}
 
             <a href="/api/export/excel/sucursal/{{ sucursal.id }}" class="px-3 py-2 bg-[#154360] hover:bg-[#0f2d42] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
                 <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
@@ -120,10 +154,10 @@
                     <tr class="border-b border-gray-200 hover:bg-slate-50 transition" data-id="{{ fila.id }}">
                         <td class="p-2 text-center text-xs font-bold text-gray-500 row-number">{{ loop.index }}</td>
                         <td class="p-2">
-                            <input type="text" class="input-nombre w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold focus:ring-1 focus:ring-blue-500" value="{{ fila.nombre }}">
+                            <input type="text" class="input-nombre w-full border border-gray-300 rounded px-2 py-1 text-sm font-semibold focus:ring-1 focus:ring-blue-500" value="{{ fila.nombre }}" {% if bloqueado %}disabled{% endif %}>
                         </td>
                         <td class="p-2">
-                            <select class="input-cargo w-full border border-gray-300 rounded px-2 py-1 text-xs font-medium">
+                            <select class="input-cargo w-full border border-gray-300 rounded px-2 py-1 text-xs font-medium" {% if bloqueado %}disabled{% endif %}>
                                 {% for cg in cargos_opciones %}
                                 <option value="{{ cg }}" {% if cg in fila.cargo %}selected{% endif %}>{{ cg }}</option>
                                 {% endfor %}
@@ -133,7 +167,7 @@
                         <!-- DÍAS PASADOS -->
                         {% for d_val in fila.dias_pas %}
                         <td class="p-1 text-center bg-orange-50/40">
-                            <select class="novedad-select {% if d_val in ['V','MD','S','B','F'] %}deduccion{% elif d_val in ['N','R'] %}adicion{% endif %}" onchange="recalcularFila(this.closest('tr'))">
+                            <select class="novedad-select {% if d_val in ['V','MD','S','B','F'] %}deduccion{% elif d_val in ['N','R'] %}adicion{% endif %}" onchange="recalcularFila(this.closest('tr'))" {% if bloqueado %}disabled{% endif %}>
                                 <option value=""></option>
                                 {% for item in leyenda %}
                                 <option value="{{ item.clave }}" {% if item.clave == d_val %}selected{% endif %}>{{ item.clave }}</option>
@@ -145,7 +179,7 @@
                         <!-- DÍAS FUTUROS -->
                         {% for d_val in fila.dias_fut %}
                         <td class="p-1 text-center bg-green-50/40">
-                            <select class="novedad-select {% if d_val in ['V','MD','S','B','F'] %}deduccion{% elif d_val in ['N','R'] %}adicion{% endif %}" onchange="recalcularFila(this.closest('tr'))">
+                            <select class="novedad-select {% if d_val in ['V','MD','S','B','F'] %}deduccion{% elif d_val in ['N','R'] %}adicion{% endif %}" onchange="recalcularFila(this.closest('tr'))" {% if bloqueado %}disabled{% endif %}>
                                 <option value=""></option>
                                 {% for item in leyenda %}
                                 <option value="{{ item.clave }}" {% if item.clave == d_val %}selected{% endif %}>{{ item.clave }}</option>
@@ -155,7 +189,7 @@
                         {% endfor %}
 
                         <td class="p-2">
-                            <select class="input-estado w-full border border-gray-300 rounded px-1 py-1 text-xs font-bold text-center">
+                            <select class="input-estado w-full border border-gray-300 rounded px-1 py-1 text-xs font-bold text-center" {% if bloqueado %}disabled{% endif %}>
                                 <option value="ACTIVO" {% if fila.estado == 'ACTIVO' %}selected{% endif %}>ACTIVO</option>
                                 <option value="NUEVO" {% if fila.estado == 'NUEVO' %}selected{% endif %}>NUEVO</option>
                                 <option value="BAJA" {% if fila.estado == 'BAJA' %}selected{% endif %}>BAJA</option>
@@ -164,7 +198,7 @@
                         </td>
 
                         <td class="p-2">
-                            <input type="number" step="0.5" value="{{ fila.combustible_base }}" class="combustible-base combustible-input w-20 px-2 py-1 text-xs rounded text-center font-bold" oninput="recalcularFila(this.closest('tr'))">
+                            <input type="number" step="0.5" value="{{ fila.combustible_base }}" class="combustible-base combustible-input w-20 px-2 py-1 text-xs rounded text-center font-bold" oninput="recalcularFila(this.closest('tr'))" {% if bloqueado %}disabled{% endif %}>
                         </td>
 
                         <td class="p-2 text-center bg-slate-50">
@@ -180,19 +214,23 @@
                         </td>
 
                         <td class="p-2">
-                            <input type="text" class="input-talla w-12 border border-gray-300 rounded px-1 py-1 text-xs text-center uppercase" value="{{ fila.talla or '' }}" placeholder="Talla">
+                            <input type="text" class="input-talla w-12 border border-gray-300 rounded px-1 py-1 text-xs text-center uppercase" value="{{ fila.talla or '' }}" placeholder="Talla" {% if bloqueado %}disabled{% endif %}>
                         </td>
 
                         <td class="p-2">
-                            <input type="text" class="input-req w-full border border-gray-300 rounded px-2 py-1 text-xs" value="{{ fila.req or '' }}" placeholder="Req...">
+                            <input type="text" class="input-req w-full border border-gray-300 rounded px-2 py-1 text-xs" value="{{ fila.req or '' }}" placeholder="Req..." {% if bloqueado %}disabled{% endif %}>
                         </td>
 
                         <td class="p-2">
-                            <input type="text" class="input-obs w-full border border-gray-300 rounded px-2 py-1 text-xs" value="{{ fila.obs or '' }}" placeholder="Obs...">
+                            <input type="text" class="input-obs w-full border border-gray-300 rounded px-2 py-1 text-xs" value="{{ fila.obs or '' }}" placeholder="Obs..." {% if bloqueado %}disabled{% endif %}>
                         </td>
 
                         <td class="p-2 text-center">
+                            {% if not bloqueado %}
                             <button type="button" onclick="eliminarFila(this)" class="text-red-500 hover:text-red-700 font-bold p-1">✖</button>
+                            {% else %}
+                            <span class="text-slate-300 dark:text-slate-600 select-none">✖</span>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}
@@ -226,6 +264,7 @@
         </a>
 
         <div class="flex items-center space-x-3">
+            {% if not bloqueado %}
             <button type="button" onclick="guardarReporte({{ reporte.id }}, false)" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-800 text-xs font-bold rounded-lg transition">
                 💾 Guardar Borrador
             </button>
@@ -233,6 +272,12 @@
                 <i data-lucide="send" class="w-4 h-4"></i>
                 <span>ENVIAR REPORTE OFICIAL</span>
             </button>
+            {% else %}
+            <div class="px-4 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 rounded-lg text-xs font-bold flex items-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4 text-amber-600"></i>
+                <span>Edición Inhabilitada &bull; Novedades en Solo Lectura</span>
+            </div>
+            {% endif %}
         </div>
     </div>
 

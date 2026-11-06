@@ -630,18 +630,19 @@ def asegurar_ciclo_actual(conn=None):
         close_at_end = True
 
     c = conn.cursor()
-    fsab = calcular_sabado_actual()
-    fsab_str = fsab.strftime("%Y-%m-%d")
-
-    lunes_pas = fsab - timedelta(days=5)
-    sab_pas = fsab
-    lunes_fut = fsab + timedelta(days=2)
-    sab_fut = fsab + timedelta(days=7)
-
-    c.execute("SELECT id FROM ciclos_semanales WHERE fecha_sabado = ?", (fsab_str,))
+    # Si ya existe al menos un ciclo semanal, tomar el último ciclo activo
+    c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
     ciclo = c.fetchone()
 
     if not ciclo:
+        fsab = calcular_sabado_actual()
+        fsab_str = fsab.strftime("%Y-%m-%d")
+
+        lunes_pas = fsab - timedelta(days=5)
+        sab_pas = fsab
+        lunes_fut = fsab + timedelta(days=2)
+        sab_fut = fsab + timedelta(days=7)
+
         c.execute('''
         INSERT INTO ciclos_semanales (fecha_sabado, fecha_inicio_pas, fecha_fin_pas, fecha_inicio_fut, fecha_fin_fut, estado_general)
         VALUES (?, ?, ?, ?, ?, 'FASE_1_GERENTES')
@@ -651,7 +652,7 @@ def asegurar_ciclo_actual(conn=None):
         ciclo_id = ciclo["id"]
 
     # Crear reportes vacíos para cada sucursal en este ciclo si aún no existen
-    c.execute("SELECT id, email_gerente FROM sucursales WHERE activa = 1")
+    c.execute("SELECT id, email_gerente FROM sucursales WHERE activa = 1 ORDER BY id ASC")
     sucursales = c.fetchall()
 
     for suc in sucursales:
@@ -666,17 +667,20 @@ def asegurar_ciclo_actual(conn=None):
             u = c.fetchone()
             u_id = u["id"] if u else None
 
+            # Cargar colaboradores de la sucursal al detalle
+            c.execute("SELECT * FROM colaboradores WHERE sucursal_id = ? AND activo = 1 ORDER BY id ASC", (suc["id"],))
+            colabs = c.fetchall()
+            suma_base = sum(float(col.get("combustible_base", 0.0) or 0.0) for col in colabs)
+            
             c.execute('''
-            INSERT INTO reportes_sucursales (ciclo_id, sucursal_id, usuario_id, estado)
-            VALUES (?, ?, ?, 'PENDIENTE')
-            ''', (ciclo_id, suc["id"], u_id))
+            INSERT INTO reportes_sucursales (ciclo_id, sucursal_id, usuario_id, estado, total_empleados, suma_base, suma_ajustes, suma_neto)
+            VALUES (?, ?, ?, 'PENDIENTE', ?, ?, 0.0, ?)
+            ''', (ciclo_id, suc["id"], u_id, len(colabs), round(suma_base, 2), round(suma_base, 2)))
             rep_id = c.lastrowid
 
-            # Cargar colaboradores de la sucursal al detalle
-            c.execute("SELECT * FROM colaboradores WHERE sucursal_id = ? AND activo = 1", (suc["id"],))
-            colabs = c.fetchall()
             for col in colabs:
                 dias_vacio = json.dumps([""] * 6)
+                c_base = float(col.get("combustible_base", 0.0) or 0.0)
                 c.execute('''
                 INSERT INTO detalle_novedades (
                     reporte_id, colaborador_id, nombre, cargo, estado, 
@@ -684,14 +688,179 @@ def asegurar_ciclo_actual(conn=None):
                     dias_pas_json, dias_fut_json, talla, req, obs
                 ) VALUES (?, ?, ?, ?, ?, ?, 0.0, 0.0, ?, ?, ?, ?, ?, ?)
                 ''', (rep_id, col["id"], col["nombre"], col["cargo"], col["estado_default"],
-                      col["combustible_base"], col["combustible_base"], dias_vacio, dias_vacio,
-                      col["talla"], col["req_default"], col["obs_default"]))
+                      c_base, c_base, dias_vacio, dias_vacio,
+                      col.get("talla", ""), col.get("req_default", ""), col.get("obs_default", "")))
 
     conn.commit()
     if close_at_end:
         conn.close()
     return ciclo_id
 
+
+def realizar_corte_semanal_logica(usuario_dict: dict, conn=None) -> dict:
+    """
+    Realiza el corte semanal recurrente:
+    1. Valida que el ciclo actual esté en Fase 4 (Fondos Despachados / Depósito Dania).
+    2. Archiva históricamente el ciclo actual (con sus reportes, adjuntos y registros intactos).
+    3. Avanza 7 días a la fecha del siguiente sábado e inserta el nuevo ciclo en 'FASE_1_GERENTES'.
+    4. Para cada una de las 8 sucursales:
+       - Preserva TODOS los colaboradores trabajados en la semana previa (nombre, cargo, talla, req, obs, combustible_base).
+       - Limpia ÚNICAMENTE las novedades (días pasados y futuros en blanco ["", "", "", "", "", ""]).
+       - Reinicia los ajustes a 0.0, el total neto a la asignación base y el estado del reporte a 'PENDIENTE'.
+    5. Devuelve los datos del nuevo ciclo creado.
+    """
+    close_at_end = False
+    if conn is None:
+        conn = get_db_connection()
+        close_at_end = True
+
+    c = conn.cursor()
+
+    # 1. Obtener el ciclo actual
+    c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+    ciclo_actual = c.fetchone()
+    if not ciclo_actual:
+        if close_at_end: conn.close()
+        raise ValueError("No se encontró ningún ciclo activo en la base de datos.")
+
+    ciclo_dict = dict(ciclo_actual)
+    ciclo_id = ciclo_dict["id"]
+
+    # 2. Verificar que esté en Fase 4 (evento_dania o estado_general == 'FASE_4_COMPLETADO')
+    c.execute("SELECT id FROM eventos_dania WHERE ciclo_id = ?", (ciclo_id,))
+    ev_dania = c.fetchone()
+    if not ev_dania and ciclo_dict.get("estado_general") != "FASE_4_COMPLETADO":
+        if close_at_end: conn.close()
+        raise ValueError("No se puede realizar el corte semanal hasta que el acápite de fondos despachados esté completado (Fase 4 - Depósito de Dania confirmado).")
+
+    # 3. Archivar ciclo actual
+    fecha_ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    c.execute("UPDATE ciclos_semanales SET cerrado_en = COALESCE(cerrado_en, ?) WHERE id = ?", (fecha_ahora, ciclo_id))
+
+    # 4. Calcular el nuevo sábado (+7 días) y fechas de corte
+    fsab_actual = datetime.strptime(ciclo_dict["fecha_sabado"], "%Y-%m-%d").date()
+    fsab_nuevo = fsab_actual + timedelta(days=7)
+    fsab_nuevo_str = fsab_nuevo.strftime("%Y-%m-%d")
+
+    lunes_pas = fsab_nuevo - timedelta(days=5)
+    sab_pas = fsab_nuevo
+    lunes_fut = fsab_nuevo + timedelta(days=2)
+    sab_fut = fsab_nuevo + timedelta(days=7)
+
+    # Verificar si ya existía el ciclo o crearlo
+    c.execute("SELECT id FROM ciclos_semanales WHERE fecha_sabado = ?", (fsab_nuevo_str,))
+    ciclo_existente = c.fetchone()
+    if ciclo_existente:
+        nuevo_ciclo_id = ciclo_existente["id"]
+        c.execute("UPDATE ciclos_semanales SET estado_general = 'FASE_1_GERENTES' WHERE id = ?", (nuevo_ciclo_id,))
+    else:
+        c.execute('''
+        INSERT INTO ciclos_semanales (
+            fecha_sabado, fecha_inicio_pas, fecha_fin_pas, fecha_inicio_fut, fecha_fin_fut, estado_general
+        ) VALUES (?, ?, ?, ?, ?, 'FASE_1_GERENTES')
+        ''', (
+            fsab_nuevo_str,
+            lunes_pas.strftime("%Y-%m-%d"),
+            sab_pas.strftime("%Y-%m-%d"),
+            lunes_fut.strftime("%Y-%m-%d"),
+            sab_fut.strftime("%Y-%m-%d")
+        ))
+        nuevo_ciclo_id = c.lastrowid
+
+    # 5. Obtener sucursales activas
+    c.execute("SELECT id, nombre, email_gerente FROM sucursales WHERE activa = 1 ORDER BY id ASC")
+    sucursales = [dict(r) for r in c.fetchall()]
+
+    dias_vacio = json.dumps([""] * 6)
+
+    for suc in sucursales:
+        suc_id = suc["id"]
+
+        # Obtener usuario_id del gerente
+        c.execute("SELECT id FROM usuarios WHERE sucursal_id = ? LIMIT 1", (suc_id,))
+        u = c.fetchone()
+        u_id = u["id"] if u else None
+
+        # Obtener los colaboradores trabajados por el gerente en el ciclo que se acaba de cerrar
+        c.execute("SELECT id FROM reportes_sucursales WHERE ciclo_id = ? AND sucursal_id = ?", (ciclo_id, suc_id))
+        rep_ant = c.fetchone()
+        colaboradores_anteriores = []
+        if rep_ant:
+            c.execute('''
+            SELECT colaborador_id, nombre, cargo, estado, combustible_base, talla, req, obs
+            FROM detalle_novedades
+            WHERE reporte_id = ?
+            ORDER BY id ASC
+            ''', (rep_ant["id"],))
+            colaboradores_anteriores = [dict(r) for r in c.fetchall()]
+
+        # Fallback: si no había filas en el reporte anterior, obtener del maestro de colaboradores
+        if not colaboradores_anteriores:
+            c.execute("SELECT id as colaborador_id, nombre, cargo, estado_default as estado, combustible_base, talla, req_default as req, obs_default as obs FROM colaboradores WHERE sucursal_id = ? AND activo = 1 ORDER BY id ASC", (suc_id,))
+            colaboradores_anteriores = [dict(r) for r in c.fetchall()]
+
+        total_empleados = len(colaboradores_anteriores)
+        suma_base = sum(float(c_item.get("combustible_base", 0.0) or 0.0) for c_item in colaboradores_anteriores)
+        suma_neto = suma_base  # Con novedades limpias, deducciones son 0 y neto = base
+
+        # Crear o actualizar reporte de la nueva semana en PENDIENTE
+        c.execute("SELECT id FROM reportes_sucursales WHERE ciclo_id = ? AND sucursal_id = ?", (nuevo_ciclo_id, suc_id))
+        rep_nuevo = c.fetchone()
+        if rep_nuevo:
+            nuevo_rep_id = rep_nuevo["id"]
+            c.execute('''
+            UPDATE reportes_sucursales
+            SET estado = 'PENDIENTE', enviado_en = NULL, total_empleados = ?,
+                suma_base = ?, suma_ajustes = 0.0, suma_neto = ?,
+                usuario_id = ?, actualizado_en = CURRENT_TIMESTAMP
+            WHERE id = ?
+            ''', (total_empleados, round(suma_base, 2), round(suma_neto, 2), u_id, nuevo_rep_id))
+            c.execute("DELETE FROM detalle_novedades WHERE reporte_id = ?", (nuevo_rep_id,))
+        else:
+            c.execute('''
+            INSERT INTO reportes_sucursales (
+                ciclo_id, sucursal_id, usuario_id, estado, total_empleados,
+                suma_base, suma_ajustes, suma_neto
+            ) VALUES (?, ?, ?, 'PENDIENTE', ?, ?, 0.0, ?)
+            ''', (nuevo_ciclo_id, suc_id, u_id, total_empleados, round(suma_base, 2), round(suma_neto, 2)))
+            nuevo_rep_id = c.lastrowid
+
+        # Insertar filas preservando colaboradores pero con casillas de novedades limpias
+        for c_item in colaboradores_anteriores:
+            c_base = float(c_item.get("combustible_base", 0.0) or 0.0)
+            c.execute('''
+            INSERT INTO detalle_novedades (
+                reporte_id, colaborador_id, nombre, cargo, estado,
+                combustible_base, factor_total, deduccion_ajuste, total_neto,
+                dias_pas_json, dias_fut_json, talla, req, obs
+            ) VALUES (?, ?, ?, ?, ?, ?, 0.0, 0.0, ?, ?, ?, ?, ?, ?)
+            ''', (
+                nuevo_rep_id,
+                c_item.get("colaborador_id"),
+                c_item.get("nombre"),
+                c_item.get("cargo"),
+                c_item.get("estado") or "ACTIVO",
+                c_base,
+                c_base,
+                dias_vacio,
+                dias_vacio,
+                c_item.get("talla") or "",
+                c_item.get("req") or "",
+                c_item.get("obs") or ""
+            ))
+
+    conn.commit()
+    if close_at_end:
+        conn.close()
+
+    return {
+        "ciclo_anterior_id": ciclo_id,
+        "nuevo_ciclo_id": nuevo_ciclo_id,
+        "fecha_sabado": fsab_nuevo_str,
+        "total_sucursales": len(sucursales)
+    }
+
 if __name__ == "__main__":
     init_db()
     print("✅ Base de datos inicializada correctamente.")
+

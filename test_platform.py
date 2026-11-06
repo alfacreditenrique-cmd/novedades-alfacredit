@@ -207,9 +207,144 @@ class TestAlfaCreditPlatform(unittest.TestCase):
         self.assertEqual(all_rows[0]["nombre"], "Managua")
 
         conn.close()
-        if os.path.exists(temp_db):
-            os.remove(temp_db)
+    def test_09_novedades_locking_when_brandon_submits(self):
+        """Verifica que ningún gerente pueda editar novedades una vez que Brandon envió la solicitud a Finanzas"""
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT id FROM usuarios WHERE email = 'gerente.esteli@alfacreditsa.com'")
+        u_gerente = c.fetchone()
+        c.execute("SELECT id, ciclo_id FROM reportes_sucursales WHERE sucursal_id = 1 ORDER BY id DESC LIMIT 1")
+        rep = c.fetchone()
+        conn.close()
+
+        token_gerente = create_session_token(u_gerente["id"], "gerente.esteli@alfacreditsa.com")
+        self.client.cookies.set("alfacredit_session", token_gerente)
+
+        # 1. En Fase 1 el gerente puede guardar normalmente
+        res_ok = self.client.post("/api/novedades/save", json={
+            "reporte_id": rep["id"],
+            "filas": [{
+                "colaborador_id": 1,
+                "nombre": "Colaborador Test Esteli",
+                "cargo": "GERENTE SUCURSAL",
+                "estado": "ACTIVO",
+                "combustible_base": 1200.0,
+                "dias_pas": ["", "", "", "", "", ""],
+                "dias_fut": ["", "", "", "", "", ""],
+                "talla": "L",
+                "req": "Guantes",
+                "obs": "Al dia"
+            }],
+            "es_envio_final": False
+        })
+        self.assertEqual(res_ok.status_code, 200, f"Error en guardado fase 1: {res_ok.text}")
+
+        # 2. Brandon envía la solicitud de combustible (Avanza a Fase 3)
+        token_brandon = create_session_token(2, "adquisicionesylogistica@alfacreditsa.com")
+        self.client.cookies.set("alfacredit_session", token_brandon)
+        res_conf = self.client.post("/api/email/confirm-secondary", data={"tipo": "solicitud_brandon"})
+        self.assertEqual(res_conf.status_code, 200)
+
+        # 3. Gerente intenta guardar después del envío de Brandon -> 403 Forbidden
+        self.client.cookies.set("alfacredit_session", token_gerente)
+        res_blocked_save = self.client.post("/api/novedades/save", json={
+            "reporte_id": rep["id"],
+            "filas": [],
+            "es_envio_final": False
+        })
+        self.assertEqual(res_blocked_save.status_code, 403, "Debe rechazar con HTTP 403")
+        self.assertIn("bloqueado", res_blocked_save.json()["detail"].lower())
+
+        # 4. Gerente intenta enviar oficialmente -> 403 Forbidden
+        res_blocked_submit = self.client.post("/api/novedades/submit", json={
+            "reporte_id": rep["id"],
+            "filas": []
+        })
+        self.assertEqual(res_blocked_submit.status_code, 403, "Debe rechazar con HTTP 403")
+
+        # 5. La página /novedades muestra el aviso de solo lectura
+        res_page = self.client.get("/novedades")
+        self.assertEqual(res_page.status_code, 200)
+        self.assertIn("Periodo de Novedades Bloqueado", res_page.text)
+        self.assertIn("Solo Lectura", res_page.text)
+
+    def test_10_corte_semanal_validation_and_clean_cycle(self):
+        """Verifica la validación de Fase 4 y el corte semanal con novedades limpias y colaboradores preservados"""
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT id FROM usuarios WHERE email = 'gerente.esteli@alfacreditsa.com'")
+        u_gerente = c.fetchone()
+        conn.close()
+
+        token_gerente = create_session_token(u_gerente["id"], "gerente.esteli@alfacreditsa.com")
+        token_brandon = create_session_token(2, "adquisicionesylogistica@alfacreditsa.com")
+
+        # 1. Gerente no autorizado para corte semanal -> 403 Forbidden
+        self.client.cookies.set("alfacredit_session", token_gerente)
+        res_unauth = self.client.post("/api/ciclo/corte-semanal")
+        self.assertEqual(res_unauth.status_code, 403)
+
+        # 2. Brandon intenta hacer corte antes de Fase 4 -> 400 Bad Request
+        self.client.cookies.set("alfacredit_session", token_brandon)
+        res_not_ready = self.client.post("/api/ciclo/corte-semanal")
+        self.assertEqual(res_not_ready.status_code, 400)
+        self.assertIn("fondos despachados", res_not_ready.json()["detail"].lower())
+
+        # 3. Dania confirma depósito -> Pasa a Fase 4
+        res_dania = self.client.post("/api/email/confirm-secondary", data={"tipo": "comprobante_dania"})
+        self.assertEqual(res_dania.status_code, 200)
+
+        # 4. Brandon ejecuta el corte semanal exitosamente
+        res_corte = self.client.post("/api/ciclo/corte-semanal")
+        self.assertEqual(res_corte.status_code, 200)
+        data_corte = res_corte.json()
+        self.assertTrue(data_corte["success"])
+        self.assertIn("Corte semanal completado", data_corte["message"])
+
+        # 5. Verificar estado de la base de datos tras el corte
+        conn = get_db_connection()
+        c = conn.cursor()
+        # El ciclo anterior debe tener cerrado_en poblado
+        c.execute("SELECT cerrado_en FROM ciclos_semanales ORDER BY id ASC LIMIT 1")
+        old_c = c.fetchone()
+        self.assertIsNotNone(old_c["cerrado_en"])
+
+        # El nuevo ciclo debe estar en FASE_1_GERENTES
+        c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+        new_c = c.fetchone()
+        self.assertEqual(new_c["estado_general"], "FASE_1_GERENTES")
+        self.assertNotEqual(new_c["fecha_sabado"], old_c)
+
+        # Todas las 8 sucursales deben tener reporte en PENDIENTE
+        c.execute("SELECT COUNT(*) as cnt FROM reportes_sucursales WHERE ciclo_id = ? AND estado = 'PENDIENTE'", (new_c["id"],))
+        self.assertEqual(c.fetchone()["cnt"], 8)
+
+        # Los colaboradores deben haberse preservado pero con casillas de novedades limpias
+        c.execute('''
+        SELECT d.* FROM detalle_novedades d
+        JOIN reportes_sucursales r ON d.reporte_id = r.id
+        WHERE r.ciclo_id = ?
+        ''', (new_c["id"],))
+        filas = c.fetchall()
+        self.assertGreaterEqual(len(filas), 8, "Debe tener colaboradores preservados")
+        for f in filas:
+            self.assertEqual(f["factor_total"], 0.0)
+            self.assertEqual(f["deduccion_ajuste"], 0.0)
+            self.assertEqual(f["total_neto"], f["combustible_base"])
+            pas = json.loads(f["dias_pas_json"])
+            fut = json.loads(f["dias_fut_json"])
+            self.assertEqual(pas, [""] * 6)
+            self.assertEqual(fut, [""] * 6)
+
+        conn.close()
+
+        # 6. Gerente ahora vuelve a estar habilitado para la nueva semana
+        self.client.cookies.set("alfacredit_session", token_gerente)
+        res_new_page = self.client.get("/novedades")
+        self.assertEqual(res_new_page.status_code, 200)
+        self.assertNotIn("Periodo de Novedades Bloqueado", res_new_page.text)
 
 if __name__ == "__main__":
     unittest.main()
+
 

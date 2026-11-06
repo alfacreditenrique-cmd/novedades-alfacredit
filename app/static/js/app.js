@@ -575,6 +575,96 @@ async function confirmarCorreoSecundario() {
     }
 }
 
+// ==========================================
+// CORTE SEMANAL / INICIAR NUEVO CICLO (BRANDON / ADMIN)
+// ==========================================
+async function realizarCorteSemanal(faseActual) {
+    if (faseActual < 4) {
+        Swal.fire({
+            icon: "warning",
+            title: "Corte No Permitido Todavía",
+            html: `
+                <div class="text-left text-xs space-y-2">
+                    <p class="text-slate-700 dark:text-slate-200">
+                        El ciclo semanal actual aún se encuentra en <b>Fase ${faseActual}</b>.
+                    </p>
+                    <p class="text-slate-600 dark:text-slate-300">
+                        Para poder realizar el corte semanal y limpiar las novedades, es requisito indispensable que el acápite de <b>Fondos Despachados (Fase 4 - Depósito de Dania verificado)</b> esté completado al 100%.
+                    </p>
+                    <div class="p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 rounded text-amber-800 dark:text-amber-300">
+                        💡 Espera a que Dania envíe el comprobante de depósito bancario o confírmalo secundariamente desde el monitor.
+                    </div>
+                </div>
+            `,
+            confirmButtonColor: "#154360",
+            confirmButtonText: "Entendido"
+        });
+        return;
+    }
+
+    const confirm = await Swal.fire({
+        title: "¿Realizar Corte Semanal e Iniciar Nuevo Ciclo?",
+        html: `
+            <div class="text-left text-xs space-y-3 text-slate-700 dark:text-slate-200">
+                <p>Esta acción ejecutará el cierre formal y recurrente de la semana:</p>
+                <ul class="list-disc pl-4 space-y-1.5 text-slate-600 dark:text-slate-300">
+                    <li><b>Archivado Histórico:</b> El ciclo actual se guardará con su fecha, montos aprobados y reportes intactos.</li>
+                    <li><b>Avanzar al Próximo Sábado:</b> Se generará el nuevo periodo semanal avanzando automáticamente 7 días.</li>
+                    <li><b>Preservación de Colaboradores:</b> Se conservarán todos los colaboradores de las 8 sucursales con sus cargos, requerimientos y asignaciones.</li>
+                    <li><b>Corte Limpio de Novedades:</b> Se limpiarán únicamente las casillas de novedades (días en blanco y ajustes en C$ 0.00).</li>
+                    <li><b>Rehabilitación de Edición:</b> Los gerentes tendrán habilitado de inmediato su reporte en estado PENDIENTE para la nueva semana.</li>
+                </ul>
+            </div>
+        `,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonColor: "#7e22ce",
+        cancelButtonColor: "#64748b",
+        confirmButtonText: "✂️ Sí, realizar corte semanal",
+        cancelButtonText: "Cancelar"
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    Swal.fire({
+        title: "Ejecutando Corte Semanal...",
+        text: "Archivando periodo actual y preparando la nueva semana para todas las sucursales",
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+    });
+
+    try {
+        const res = await fetch("/api/ciclo/corte-semanal", {
+            method: "POST"
+        });
+        const data = await res.json();
+        if (data.success) {
+            Swal.fire({
+                icon: "success",
+                title: "¡Nuevo Ciclo Iniciado!",
+                text: data.message,
+                confirmButtonColor: "#154360"
+            }).then(() => {
+                window.location.href = "/dashboard";
+            });
+        } else {
+            Swal.fire({
+                icon: "error",
+                title: "No se pudo realizar el corte",
+                text: data.detail || data.message || "Error al procesar el corte semanal.",
+                confirmButtonColor: "#154360"
+            });
+        }
+    } catch (e) {
+        Swal.fire({
+            icon: "error",
+            title: "Error de Red",
+            text: "Ocurrió un error al contactar al servidor: " + e,
+            confirmButtonColor: "#154360"
+        });
+    }
+}
+
 // INICIAR AL CARGAR
 document.addEventListener("DOMContentLoaded", () => {
     initTheme();

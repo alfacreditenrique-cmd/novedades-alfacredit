@@ -27,6 +27,11 @@
                 <i data-lucide="check-check" class="w-4 h-4"></i>
                 <span>Confirmar Correo (Secundario)</span>
             </button>
+
+            <button onclick="realizarCorteSemanal({{ estado.fase_actual }})" class="px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm {% if estado.fase_actual == 4 %}bg-purple-700 hover:bg-purple-800 text-white shadow-purple-500/30 ring-2 ring-purple-400/50 animate-pulse{% else %}bg-slate-200 hover:bg-slate-300 text-slate-700{% endif %}" title="{% if estado.fase_actual == 4 %}Fondos Despachados listos: Haz clic para archivar la semana y abrir el nuevo ciclo{% else %}Disponible una vez completada la Fase 4 (Fondos Despachados){% endif %}">
+                <i data-lucide="scissors" class="w-4 h-4"></i>
+                <span>Corte Semanal / Iniciar Nuevo Ciclo</span>
+            </button>
             {% endif %}
 
             <a href="/api/export/excel/consolidado" class="px-3 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg flex items-center space-x-1 transition shadow-sm">
@@ -191,7 +196,7 @@
             <div>
                 <h3 class="text-base font-black text-slate-800 flex items-center gap-2">
                     <i data-lucide="building-2" class="w-5 h-5 text-[#154360]"></i>
-                    Estado Detallado por Sucursal (9 Sucursales)
+                    Estado Detallado por Sucursal ({{ estado.total_sucursales }} Sucursales)
                 </h3>
                 <span class="text-xs text-slate-500">Revisa en tiempo real qué gerente falta de enviar su informe de novedades</span>
             </div>

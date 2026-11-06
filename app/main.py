@@ -9,7 +9,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse,
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from app.database import get_db_connection, init_db, asegurar_ciclo_actual, hash_password, IS_SERVERLESS, STORAGE_DIR
+from app.database import (
+    get_db_connection, init_db, asegurar_ciclo_actual, hash_password,
+    IS_SERVERLESS, STORAGE_DIR, realizar_corte_semanal_logica
+)
 from app.auth import (
     get_current_user, require_auth, require_role, create_session_token, COOKIE_NAME, verify_password,
     solicitar_token_recuperacion, validar_token_recuperacion, restablecer_password_con_token
@@ -188,6 +191,38 @@ def obtener_estado_completo_pipeline() -> Dict[str, Any]:
         "suma_total_neto": round(suma_total_neto, 2),
         "servidor_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
     }
+
+def verificar_bloqueo_novedades(ciclo_id: int, conn) -> tuple[bool, str]:
+    """
+    Determina si las novedades están bloqueadas para los gerentes de sucursal.
+    Regla de Bloqueo:
+    En cuanto Brandon envía la solicitud de combustible (o Fase 2 enviada / Fase 3 / Fase 4),
+    NINGÚN gerente puede editar ni guardar novedades de su sucursal hasta que el despacho
+    de fondos (Fase 4) esté completado y Brandon realice el corte semanal e inicie el nuevo ciclo.
+    """
+    c = conn.cursor()
+    c.execute("SELECT estado_general FROM ciclos_semanales WHERE id = ?", (ciclo_id,))
+    ciclo = c.fetchone()
+    if not ciclo:
+        return False, ""
+
+    estado_gen = ciclo["estado_general"]
+
+    # Revisar si Brandon ya registró envío de solicitud
+    c.execute("SELECT id FROM eventos_brandon WHERE ciclo_id = ?", (ciclo_id,))
+    ev_b = c.fetchone()
+
+    # Revisar si Dania ya registró depósito (Fase 4 completada)
+    c.execute("SELECT id FROM eventos_dania WHERE ciclo_id = ?", (ciclo_id,))
+    ev_d = c.fetchone()
+
+    if ev_d or estado_gen == "FASE_4_COMPLETADO":
+        return True, "El ciclo semanal ha sido completado y los fondos han sido despachados (Fase 4). Las novedades están en modo de SOLO LECTURA hasta que la Coordinación (Brandon) realice el corte semanal e inicie el nuevo ciclo."
+    elif ev_b or estado_gen in ("FASE_3_DANIA", "FASE_2_BRANDON"):
+        if ev_b or estado_gen == "FASE_3_DANIA":
+            return True, "La Coordinación (Brandon) ya formalizó y envió la solicitud de combustible a Finanzas. El reporte de novedades se encuentra bloqueado en modo de SOLO LECTURA hasta que se complete el despacho de fondos (Fase 4) y se inicie el nuevo ciclo semanal."
+
+    return False, ""
 
 # --- EVENTOS DE INICIO ---
 @app.on_event("startup")
@@ -448,6 +483,12 @@ async def novedades_page(
     c.execute("SELECT id, nombre FROM sucursales WHERE activa = 1 ORDER BY id ASC")
     lista_sucursales = [dict(r) for r in c.fetchall()]
 
+    # Verificar si el ciclo está bloqueado para gerentes
+    bloqueado = False
+    bloqueado_motivo = ""
+    if user["rol"] == "gerente":
+        bloqueado, bloqueado_motivo = verificar_bloqueo_novedades(ciclo["id"], conn)
+
     conn.close()
 
     # Calcular fechas de cabecera
@@ -471,7 +512,9 @@ async def novedades_page(
         "fechas_fut": fechas_fut,
         "leyenda": LEYENDA_MAESTRA,
         "cargos_opciones": cargos_opciones,
-        "lista_sucursales": lista_sucursales
+        "lista_sucursales": lista_sucursales,
+        "bloqueado": bloqueado,
+        "bloqueado_motivo": bloqueado_motivo
     })
 
 @app.get("/consolidado", response_class=HTMLResponse)
@@ -570,9 +613,15 @@ async def api_save_novedades(request: Request, payload: dict, user: dict = Depen
         conn.close()
         raise HTTPException(status_code=404, detail="Reporte no encontrado")
 
-    if user["rol"] == "gerente" and rep["sucursal_id"] != user["sucursal_id"]:
-        conn.close()
-        raise HTTPException(status_code=403, detail="No puedes modificar reportes de otra sucursal")
+    if user["rol"] == "gerente":
+        if rep["sucursal_id"] != user["sucursal_id"]:
+            conn.close()
+            raise HTTPException(status_code=403, detail="No puedes modificar reportes de otra sucursal")
+
+        bloqueado, motivo = verificar_bloqueo_novedades(rep["ciclo_id"], conn)
+        if bloqueado:
+            conn.close()
+            raise HTTPException(status_code=403, detail=motivo)
 
     # Eliminar filas viejas y reinsertar nuevas calculadas
     c.execute("DELETE FROM detalle_novedades WHERE reporte_id = ?", (reporte_id,))
@@ -645,6 +694,70 @@ async def api_save_novedades(request: Request, payload: dict, user: dict = Depen
         "success": True,
         "message": "Reporte enviado exitosamente" if es_envio_final else "Borrador guardado correctamente",
         "suma_neto": round(suma_neto, 2)
+    }
+
+@app.post("/api/novedades/submit")
+async def api_submit_novedades(request: Request, payload: dict, user: dict = Depends(require_auth)):
+    payload["es_envio_final"] = True
+    return await api_save_novedades(request, payload, user)
+
+@app.post("/api/ciclo/corte-semanal")
+@app.post("/api/ciclo/limpiar")
+async def api_corte_semanal(request: Request, user: dict = Depends(require_auth)):
+    """
+    Corte Semanal y Apertura de Nuevo Ciclo para Coordinación (Brandon) y Admin:
+    - Valida que el ciclo actual esté en Fase 4 (Fondos Despachados / Depósito de Dania verificado).
+    - Archiva el ciclo actual en la base de datos con toda su trazabilidad histórica intacta.
+    - Crea el nuevo ciclo (+7 días al siguiente sábado) en FASE_1_GERENTES.
+    - Preserva todos los colaboradores ya trabajados por los gerentes pero limpia las novedades a blanco.
+    - Vuelve a habilitar la edición de novedades para todas las sucursales.
+    """
+    if user["rol"] not in ["admin", "brandon"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Acceso restringido: Solo la Coordinación de Logística (Brandon) y Administradores tienen autorización para realizar el corte semanal e iniciar el nuevo ciclo."
+        )
+
+    # Validar que el ciclo actual esté en Fase 4
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+    ciclo = c.fetchone()
+    if not ciclo:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No se encontró un ciclo activo en el sistema.")
+
+    c.execute("SELECT id FROM eventos_dania WHERE ciclo_id = ?", (ciclo["id"],))
+    ev_d = c.fetchone()
+    if not ev_d and ciclo["estado_general"] != "FASE_4_COMPLETADO":
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede realizar el corte semanal hasta que el acápite de fondos despachados esté completado (Fase 4 - Depósito de Dania confirmado)."
+        )
+    conn.close()
+
+    try:
+        resultado = realizar_corte_semanal_logica(user)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al ejecutar el corte semanal: {str(e)}")
+
+    log_audit(
+        user["email"], user["nombre"], user["rol"],
+        "CORTE_SEMANAL_EJECUTADO",
+        f"Brandon realizó el corte semanal y habilitó el nuevo ciclo para el sábado {resultado['fecha_sabado']}. Novedades limpias y colaboradores preservados para las {resultado['total_sucursales']} sucursales.",
+        ip_address=request.client.host
+    )
+
+    nuevo_estado = obtener_estado_completo_pipeline()
+    await ws_manager.broadcast_status({"type": "STATUS_UPDATE", "data": nuevo_estado})
+
+    return {
+        "success": True,
+        "message": f"Corte semanal completado exitosamente. Se ha iniciado el nuevo ciclo para el corte del sábado {resultado['fecha_sabado']}. Todas las sucursales están listas en estado PENDIENTE con novedades limpias y colaboradores intactos para que los gerentes comiencen a trabajar.",
+        "nuevo_ciclo_id": resultado["nuevo_ciclo_id"],
+        "fecha_sabado": resultado["fecha_sabado"],
+        "nuevo_estado": nuevo_estado
     }
 
 @app.post("/api/brandon/send-request")
