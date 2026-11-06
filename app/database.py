@@ -803,22 +803,39 @@ def realizar_corte_semanal_logica(usuario_dict: dict, conn=None) -> dict:
             colaboradores_anteriores = [dict(r) for r in c.fetchall()]
 
         # Evolución y depuración automática de estados para el nuevo ciclo:
-        # 1. 'BAJA' o 'INACTIVO': Excluidos automáticamente de la clonación
-        # 2. 'NUEVO': Evoluciona automáticamente a 'ACTIVO'
+        # 1. 'BAJA' o 'INACTIVO': Excluidos automáticamente de la clonación y desactivados en la tabla maestra
+        # 2. 'NUEVO': Evoluciona automáticamente a 'ACTIVO' y se registra en la tabla maestra si era colaborador nuevo
         # 3. 'ACTIVO': Se mantiene intacto con su cargo y combustible base
         colaboradores_evolucionados = []
         for c_item in colaboradores_anteriores:
             st = (c_item.get("estado") or "").strip().upper()
+            nom = (c_item.get("nombre") or "").strip()
+            colab_id = c_item.get("colaborador_id")
+
             if st in ("BAJA", "INACTIVO"):
-                if c_item.get("colaborador_id"):
-                    c.execute("UPDATE colaboradores SET activo = 0 WHERE id = ?", (c_item["colaborador_id"],))
+                if colab_id:
+                    c.execute("UPDATE colaboradores SET activo = 0 WHERE id = ?", (colab_id,))
+                elif nom:
+                    c.execute("UPDATE colaboradores SET activo = 0 WHERE sucursal_id = ? AND LOWER(nombre) = LOWER(?)", (suc_id, nom))
                 continue
 
             c_nuevo = dict(c_item)
             if st == "NUEVO":
                 c_nuevo["estado"] = "ACTIVO"
-                if c_item.get("colaborador_id"):
-                    c.execute("UPDATE colaboradores SET estado_default = 'ACTIVO' WHERE id = ?", (c_item["colaborador_id"],))
+                if colab_id:
+                    c.execute("UPDATE colaboradores SET estado_default = 'ACTIVO', activo = 1 WHERE id = ?", (colab_id,))
+                elif nom:
+                    c.execute("SELECT id FROM colaboradores WHERE sucursal_id = ? AND LOWER(nombre) = LOWER(?)", (suc_id, nom))
+                    existing_colab = c.fetchone()
+                    if existing_colab:
+                        c.execute("UPDATE colaboradores SET estado_default = 'ACTIVO', activo = 1 WHERE id = ?", (existing_colab["id"],))
+                        c_nuevo["colaborador_id"] = existing_colab["id"]
+                    else:
+                        c.execute('''
+                        INSERT INTO colaboradores (sucursal_id, nombre, cargo, combustible_base, estado_default, talla, req_default, obs_default, activo)
+                        VALUES (?, ?, ?, ?, 'ACTIVO', ?, ?, ?, 1)
+                        ''', (suc_id, nom, c_item.get("cargo", "OFICIAL DE CREDITO"), float(c_item.get("combustible_base", 0.0) or 0.0), c_item.get("talla", ""), c_item.get("req", ""), c_item.get("obs", "")))
+                        c_nuevo["colaborador_id"] = c.lastrowid
             elif not st:
                 c_nuevo["estado"] = "ACTIVO"
             else:

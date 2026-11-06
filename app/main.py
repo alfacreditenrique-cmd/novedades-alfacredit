@@ -112,7 +112,11 @@ def obtener_estado_completo_pipeline(ciclo_id: Optional[int] = None) -> Dict[str
     for s in sucursales_raw:
         tel = s.get("sucursal_telefono") or ""
         tel_digits = "".join(ch for ch in str(tel) if ch.isdigit())
-        if len(tel_digits) == 8:
+        if tel_digits.startswith("00505"):
+            wa_num = tel_digits[2:]
+        elif tel_digits.startswith("505") and len(tel_digits) >= 11:
+            wa_num = tel_digits
+        elif len(tel_digits) == 8:
             wa_num = "505" + tel_digits
         elif len(tel_digits) > 8:
             wa_num = tel_digits
@@ -180,11 +184,15 @@ def obtener_estado_completo_pipeline(ciclo_id: Optional[int] = None) -> Dict[str
     atraso_responsable = ""
     nivel_alerta = "info" # 'info', 'warning', 'danger', 'success'
 
-    if evento_dania_dict:
+    if evento_dania_dict or (not es_ciclo_actual and (ciclo_dict.get("cerrado_en") or ciclo_dict.get("estado_general") == "FASE_4_COMPLETADO")):
         fase_actual = 4
-        atraso_responsable = "Ninguno"
-        atraso_mensaje = "¡Proceso de Novedades y Combustible Completado con Éxito! Fondos listos y comprobante verificado."
-        nivel_alerta = "success"
+        atraso_responsable = "Ninguno (Ciclo Archivado)" if not es_ciclo_actual else "Ninguno"
+        atraso_mensaje = (
+            f"Semana archivada para el corte del sábado {ciclo_dict.get('fecha_sabado')}. Registro histórico cerrado."
+            if not es_ciclo_actual else
+            "¡Proceso de Novedades y Combustible Completado con Éxito! Fondos listos y comprobante verificado."
+        )
+        nivel_alerta = "info" if not es_ciclo_actual else "success"
     elif evento_brandon_dict:
         fase_actual = 3
         atraso_responsable = "Dania (Tesorería / Finanzas)"

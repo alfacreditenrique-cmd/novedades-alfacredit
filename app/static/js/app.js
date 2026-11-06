@@ -82,9 +82,18 @@ function updateDashboardStatus(data) {
     const delayMsg = document.getElementById("delay-message");
     const delayResp = document.getElementById("delay-responsible");
     if (delayBanner && delayMsg) {
-        delayBanner.className = `delay-banner ${data.nivel_alerta} mb-6 flex items-start space-x-3`;
+        delayBanner.className = `delay-banner ${data.nivel_alerta} mt-6 flex flex-col md:flex-row md:items-center justify-between gap-3`;
         delayMsg.innerText = data.atraso_mensaje;
         if (delayResp) delayResp.innerText = data.atraso_responsable;
+    }
+
+    const waActions = document.getElementById("delay-whatsapp-actions");
+    if (waActions) {
+        if (data.fase_actual === 1 && data.sucursales_pendientes && data.sucursales_pendientes.length > 0) {
+            waActions.style.display = "flex";
+        } else {
+            waActions.style.display = "none";
+        }
     }
 
     // 3. Progreso de Gerentes

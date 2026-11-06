@@ -379,8 +379,10 @@ class TestAlfaCreditPlatform(unittest.TestCase):
         res_dash_hist = self.client.get(f"/dashboard?ciclo_id={primer_ciclo['id']}")
         self.assertEqual(res_dash_hist.status_code, 200)
         self.assertIn("Archivo Histórico", res_dash_hist.text)
+        # En una semana histórica archivada no deben mostrarse botones de recordatorio WhatsApp
+        self.assertNotIn("WhatsApp Grupo", res_dash_hist.text)
 
-        # 2. Verificar generación de enlaces y datos de recordatorio WhatsApp
+        # 2. Verificar generación de enlaces y datos de recordatorio WhatsApp para ciclo activo
         res_status = self.client.get("/api/status")
         self.assertEqual(res_status.status_code, 200)
         st_data = res_status.json()
@@ -397,11 +399,32 @@ class TestAlfaCreditPlatform(unittest.TestCase):
             if s.get("sucursal_telefono"):
                 self.assertIn("505", s["whatsapp_numero"])
 
-        # Verificar presencia de botones de recordatorio en HTML de Dashboard
+        # Verificar presencia de botones de recordatorio en HTML de Dashboard para ciclo activo
         self.assertIn("Copiar Recordatorio General", res_dash.text)
         self.assertIn("Recordar WhatsApp", res_dash.text)
 
+        # Verificar permisos de Gerente en Dashboard Histórico y descargas
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT id, email FROM usuarios WHERE rol = 'gerente' AND sucursal_id = 1")
+        u_gerente = c.fetchone()
+        conn.close()
+        token_gerente = create_session_token(u_gerente["id"], u_gerente["email"])
+        self.client.cookies.set("alfacredit_session", token_gerente)
+        res_dash_gerente = self.client.get(f"/dashboard?ciclo_id={primer_ciclo['id']}")
+        self.assertEqual(res_dash_gerente.status_code, 200)
+        self.assertIn("Descargar Mi Reporte Excel", res_dash_gerente.text)
+        self.assertNotIn("Descargar Consolidado Excel", res_dash_gerente.text)
+
+        # Descarga de Excel histórico de su propia sucursal por Gerente
+        res_excel_propio = self.client.get(f"/api/export/excel/sucursal/1?ciclo_id={primer_ciclo['id']}")
+        self.assertEqual(res_excel_propio.status_code, 200)
+        # Bloqueo de descarga de otra sucursal
+        res_excel_ajeno = self.client.get(f"/api/export/excel/sucursal/2?ciclo_id={primer_ciclo['id']}")
+        self.assertEqual(res_excel_ajeno.status_code, 403)
+
         # 3. Verificar evolución y depuración de estados de colaboradores en corte semanal
+        self.client.cookies.set("alfacredit_session", token_admin)
         conn = get_db_connection()
         c = conn.cursor()
         # Obtener ciclo activo y reporte de Estelí
@@ -451,6 +474,14 @@ class TestAlfaCreditPlatform(unittest.TestCase):
         WHERE r.ciclo_id = ? AND r.sucursal_id = 1
         ''', (nuevo_ciclo_id,))
         filas_nuevas = {r["nombre"]: dict(r) for r in c.fetchall()}
+
+        # Verificar vinculación en la tabla maestra de colaboradores
+        c.execute("SELECT nombre, estado_default, activo FROM colaboradores WHERE sucursal_id = 1 AND nombre = 'Colab Test Nuevo'")
+        colab_nuevo_maestro = c.fetchone()
+        self.assertIsNotNone(colab_nuevo_maestro, "Colaborador nuevo debe registrarse en la tabla maestra de colaboradores")
+        self.assertEqual(colab_nuevo_maestro["estado_default"], "ACTIVO")
+        self.assertEqual(colab_nuevo_maestro["activo"], 1)
+
         conn.close()
 
         # Validaciones de evolución y depuración:
