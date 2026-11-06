@@ -358,6 +358,117 @@ class TestAlfaCreditPlatform(unittest.TestCase):
         self.assertEqual(res_excel_hist.status_code, 200)
         self.assertTrue(len(res_excel_hist.content) > 1000)
 
+    def test_11_historical_selector_reminders_and_collaborator_evolution(self):
+        """Verifica el selector de semanas históricas, los recordatorios por WhatsApp y la evolución/depuración de colaboradores"""
+        token_admin = create_session_token(1, "enrique@alfacreditsa.com")
+        self.client.cookies.set("alfacredit_session", token_admin)
+
+        # 1. Verificar selector de historial y vista de ciclo histórico en /dashboard
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT id, fecha_sabado FROM ciclos_semanales ORDER BY id ASC LIMIT 1")
+        primer_ciclo = c.fetchone()
+        conn.close()
+
+        res_dash = self.client.get("/dashboard")
+        self.assertEqual(res_dash.status_code, 200)
+        self.assertIn("selector-ciclos", res_dash.text)
+        self.assertIn("Ciclo Activo", res_dash.text)
+
+        # Cargar ciclo histórico por ciclo_id
+        res_dash_hist = self.client.get(f"/dashboard?ciclo_id={primer_ciclo['id']}")
+        self.assertEqual(res_dash_hist.status_code, 200)
+        self.assertIn("Archivo Histórico", res_dash_hist.text)
+
+        # 2. Verificar generación de enlaces y datos de recordatorio WhatsApp
+        res_status = self.client.get("/api/status")
+        self.assertEqual(res_status.status_code, 200)
+        st_data = res_status.json()
+        self.assertIn("recordatorio_general", st_data)
+        self.assertIn("RECORDATORIO DE NOVEDADES - ALFACREDIT S.A.", st_data["recordatorio_general"])
+        self.assertIn("recordatorio_general_encoded", st_data)
+
+        # Verificar sucursales con enlace wa.me
+        sucursales = st_data["sucursales"]
+        self.assertGreaterEqual(len(sucursales), 8)
+        for s in sucursales:
+            self.assertIn("whatsapp_url", s)
+            self.assertTrue(s["whatsapp_url"].startswith("https://wa.me/"))
+            if s.get("sucursal_telefono"):
+                self.assertIn("505", s["whatsapp_numero"])
+
+        # Verificar presencia de botones de recordatorio en HTML de Dashboard
+        self.assertIn("Copiar Recordatorio General", res_dash.text)
+        self.assertIn("Recordar WhatsApp", res_dash.text)
+
+        # 3. Verificar evolución y depuración de estados de colaboradores en corte semanal
+        conn = get_db_connection()
+        c = conn.cursor()
+        # Obtener ciclo activo y reporte de Estelí
+        c.execute("SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+        ciclo_activo_id = c.fetchone()["id"]
+        c.execute("SELECT id FROM reportes_sucursales WHERE ciclo_id = ? AND sucursal_id = 1", (ciclo_activo_id,))
+        rep_esteli = c.fetchone()
+        self.assertIsNotNone(rep_esteli)
+        rep_id = rep_esteli["id"]
+
+        # Insertar 4 colaboradores de prueba con estados específicos
+        dias_json = json.dumps([""] * 6)
+        c.execute('''
+        INSERT INTO detalle_novedades (reporte_id, colaborador_id, nombre, cargo, estado, combustible_base, factor_total, deduccion_ajuste, total_neto, dias_pas_json, dias_fut_json)
+        VALUES (?, NULL, 'Colab Test Nuevo', 'OFICIAL DE CREDITO', 'NUEVO', 800.0, 0.0, 0.0, 800.0, ?, ?)
+        ''', (rep_id, dias_json, dias_json))
+        c.execute('''
+        INSERT INTO detalle_novedades (reporte_id, colaborador_id, nombre, cargo, estado, combustible_base, factor_total, deduccion_ajuste, total_neto, dias_pas_json, dias_fut_json)
+        VALUES (?, NULL, 'Colab Test Baja', 'CONSERJE', 'BAJA', 300.0, 0.0, 0.0, 300.0, ?, ?)
+        ''', (rep_id, dias_json, dias_json))
+        c.execute('''
+        INSERT INTO detalle_novedades (reporte_id, colaborador_id, nombre, cargo, estado, combustible_base, factor_total, deduccion_ajuste, total_neto, dias_pas_json, dias_fut_json)
+        VALUES (?, NULL, 'Colab Test Inactivo', 'PROMOTOR', 'INACTIVO', 400.0, 0.0, 0.0, 400.0, ?, ?)
+        ''', (rep_id, dias_json, dias_json))
+        c.execute('''
+        INSERT INTO detalle_novedades (reporte_id, colaborador_id, nombre, cargo, estado, combustible_base, factor_total, deduccion_ajuste, total_neto, dias_pas_json, dias_fut_json)
+        VALUES (?, NULL, 'Colab Test Activo', 'SUPERVISOR', 'ACTIVO', 950.0, 0.0, 0.0, 950.0, ?, ?)
+        ''', (rep_id, dias_json, dias_json))
+        conn.commit()
+
+        # Completar Fase 4 con confirmación de depósito para habilitar corte
+        self.client.post("/api/email/confirm-secondary", data={"tipo": "comprobante_dania"})
+
+        # Ejecutar corte semanal
+        token_brandon = create_session_token(2, "adquisicionesylogistica@alfacreditsa.com")
+        self.client.cookies.set("alfacredit_session", token_brandon)
+        res_corte2 = self.client.post("/api/ciclo/corte-semanal")
+        self.assertEqual(res_corte2.status_code, 200)
+        corte2_data = res_corte2.json()
+        nuevo_ciclo_id = corte2_data["nuevo_ciclo_id"]
+
+        # Consultar filas clonadas en el nuevo ciclo para Estelí
+        c.execute('''
+        SELECT d.nombre, d.estado, d.combustible_base
+        FROM detalle_novedades d
+        JOIN reportes_sucursales r ON d.reporte_id = r.id
+        WHERE r.ciclo_id = ? AND r.sucursal_id = 1
+        ''', (nuevo_ciclo_id,))
+        filas_nuevas = {r["nombre"]: dict(r) for r in c.fetchall()}
+        conn.close()
+
+        # Validaciones de evolución y depuración:
+        # 1. Colab Test Nuevo debió evolucionar a ACTIVO
+        self.assertIn("Colab Test Nuevo", filas_nuevas, "Colab Test Nuevo debe preservarse")
+        self.assertEqual(filas_nuevas["Colab Test Nuevo"]["estado"], "ACTIVO", "El estado NUEVO debe evolucionar a ACTIVO")
+
+        # 2. Colab Test Baja debió ser EXCLUIDO
+        self.assertNotIn("Colab Test Baja", filas_nuevas, "El colaborador con estado BAJA debe ser excluido")
+
+        # 3. Colab Test Inactivo debió ser EXCLUIDO
+        self.assertNotIn("Colab Test Inactivo", filas_nuevas, "El colaborador con estado INACTIVO debe ser excluido")
+
+        # 4. Colab Test Activo se mantiene como ACTIVO con su combustible intacto
+        self.assertIn("Colab Test Activo", filas_nuevas, "Colab Test Activo debe preservarse")
+        self.assertEqual(filas_nuevas["Colab Test Activo"]["estado"], "ACTIVO")
+        self.assertEqual(filas_nuevas["Colab Test Activo"]["combustible_base"], 950.0)
+
 if __name__ == "__main__":
     unittest.main()
 

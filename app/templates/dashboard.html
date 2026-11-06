@@ -11,18 +11,47 @@
             <div class="flex items-center space-x-2">
                 <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#154360] text-white">Ciclo Semanal</span>
                 <span class="text-xs text-slate-500 font-semibold">Corte Sábado: <b class="text-slate-800">{{ estado.ciclo.fecha_sabado }}</b></span>
+                {% if not estado.es_ciclo_actual %}
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1">
+                    <i data-lucide="archive" class="w-3.5 h-3.5"></i>
+                    <span>Archivo Histórico</span>
+                </span>
+                {% else %}
+                <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                    <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+                    <span>Ciclo Activo</span>
+                </span>
+                {% endif %}
             </div>
             <h1 class="text-2xl font-black text-slate-800 tracking-tight mt-1">Panel de Control & Trazabilidad</h1>
             <p class="text-xs text-slate-500">Histórico: <b>{{ estado.ciclo.fecha_inicio_pas }} al {{ estado.ciclo.fecha_fin_pas }}</b> | Proyección: <b>{{ estado.ciclo.fecha_inicio_fut }} al {{ estado.ciclo.fecha_fin_fut }}</b></p>
         </div>
 
         <div class="flex items-center flex-wrap gap-2">
+            <!-- SELECTOR DE HISTORIAL DE SEMANAS -->
+            <div class="flex items-center space-x-1.5 bg-slate-50 p-1.5 rounded-lg border border-slate-300 shadow-sm">
+                <i data-lucide="calendar" class="w-4 h-4 text-[#154360] ml-1"></i>
+                <label for="selector-ciclos" class="text-xs font-bold text-slate-700 hidden sm:inline">Semana:</label>
+                <select id="selector-ciclos" onchange="window.location.href='/dashboard?ciclo_id=' + this.value" class="text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-md px-2 py-1 focus:ring-2 focus:ring-[#154360] focus:outline-none cursor-pointer">
+                    {% for c in ciclos_historial %}
+                    <option value="{{ c.id }}" {% if c.id == selected_ciclo_id %}selected{% endif %}>
+                        Sábado {{ c.fecha_sabado }} {% if loop.first %}(Actual){% else %}(Archivado){% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                {% if not estado.es_ciclo_actual %}
+                <a href="/dashboard" class="px-2 py-1 text-[11px] font-bold bg-[#154360] text-white rounded hover:bg-[#0f2d42] transition shadow-sm" title="Volver a la semana activa en curso">
+                    Ver Actual
+                </a>
+                {% endif %}
+            </div>
+
             <button onclick="sincronizarCorreo()" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 flex items-center space-x-1 transition shadow-sm">
                 <i data-lucide="refresh-cw" class="w-4 h-4 text-[#154360]"></i>
                 <span>Sincronizar Correo</span>
             </button>
 
-            {% if user.rol in ['admin', 'brandon'] %}
+            {% if user.rol in ['admin', 'brandon'] and estado.es_ciclo_actual %}
             <button onclick="confirmarCorreoSecundario()" class="px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded-lg flex items-center space-x-1 transition shadow-sm" title="Confirmar manualmente recepción de correo si la comprobación automática no responde">
                 <i data-lucide="check-check" class="w-4 h-4"></i>
                 <span>Confirmar Correo (Secundario)</span>
@@ -34,7 +63,7 @@
             </button>
             {% endif %}
 
-            <a href="/api/export/excel/consolidado" class="px-3 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg flex items-center space-x-1 transition shadow-sm">
+            <a href="/api/export/excel/consolidado?ciclo_id={{ estado.ciclo.id }}" class="px-3 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg flex items-center space-x-1 transition shadow-sm">
                 <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
                 <span>Descargar Consolidado Excel</span>
             </a>
@@ -130,22 +159,37 @@
         </div>
 
         <!-- BARRA DE ATRASO / DETECTOR DE RESPONSABLE -->
-        <div id="delay-banner" class="delay-banner {{ estado.nivel_alerta }} mt-6 flex items-start space-x-3">
-            <div class="p-1 rounded-full bg-white/60">
-                {% if estado.nivel_alerta == 'danger' %}
-                <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
-                {% elif estado.nivel_alerta == 'warning' %}
-                <i data-lucide="clock" class="w-5 h-5 text-amber-600"></i>
-                {% else %}
-                <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
-                {% endif %}
-            </div>
-            <div class="flex-grow">
-                <div class="flex items-center justify-between">
-                    <span class="text-xs font-black uppercase tracking-wider">Responsable del Estado Actual: <span id="delay-responsible" class="underline font-bold">{{ estado.atraso_responsable }}</span></span>
+        <div id="delay-banner" class="delay-banner {{ estado.nivel_alerta }} mt-6 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div class="flex items-start space-x-3">
+                <div class="p-1 rounded-full bg-white/60">
+                    {% if estado.nivel_alerta == 'danger' %}
+                    <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
+                    {% elif estado.nivel_alerta == 'warning' %}
+                    <i data-lucide="clock" class="w-5 h-5 text-amber-600"></i>
+                    {% else %}
+                    <i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>
+                    {% endif %}
                 </div>
-                <p id="delay-message" class="text-sm font-semibold mt-0.5">{{ estado.atraso_mensaje }}</p>
+                <div>
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs font-black uppercase tracking-wider">Responsable del Estado Actual: <span id="delay-responsible" class="underline font-bold">{{ estado.atraso_responsable }}</span></span>
+                    </div>
+                    <p id="delay-message" class="text-sm font-semibold mt-0.5">{{ estado.atraso_mensaje }}</p>
+                </div>
             </div>
+
+            {% if estado.fase_actual == 1 and estado.sucursales_pendientes %}
+            <div class="flex items-center gap-2 flex-wrap pt-2 md:pt-0">
+                <button type="button" onclick="copiarRecordatorioGeneral()" class="px-3 py-1.5 bg-white/95 hover:bg-white text-slate-800 text-xs font-bold rounded-lg border border-slate-300 shadow-sm flex items-center space-x-1.5 transition active:scale-95" title="Copiar mensaje general al portapapeles para pegarlo en WhatsApp">
+                    <i data-lucide="copy" class="w-3.5 h-3.5 text-[#154360]"></i>
+                    <span id="btn-copy-text">Copiar Recordatorio General</span>
+                </button>
+                <a href="https://wa.me/?text={{ estado.recordatorio_general_encoded }}" target="_blank" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-sm flex items-center space-x-1.5 transition" title="Enviar recordatorio general al grupo de WhatsApp de Gerentes">
+                    <i data-lucide="message-circle" class="w-3.5 h-3.5"></i>
+                    <span>WhatsApp Grupo</span>
+                </a>
+            </div>
+            {% endif %}
         </div>
 
     </div>
@@ -251,7 +295,7 @@
                                 <i data-lucide="edit-3" class="w-3.5 h-3.5"></i>
                                 <span>Editar Mi Sucursal</span>
                             </a>
-                            <a href="/api/export/excel/sucursal/{{ suc.sucursal_id }}" title="Descargar Mi Reporte Excel" class="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition">
+                            <a href="/api/export/excel/sucursal/{{ suc.sucursal_id }}?ciclo_id={{ estado.ciclo.id }}" title="Descargar Mi Reporte Excel" class="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition">
                                 <i data-lucide="download" class="w-3.5 h-3.5"></i>
                             </a>
                         {% else %}
@@ -270,11 +314,29 @@
                         <a href="/novedades?sucursal_id={{ suc.sucursal_id }}" class="flex-1 text-center py-1.5 px-2 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">
                             Ver Novedades
                         </a>
-                        <a href="/api/export/excel/sucursal/{{ suc.sucursal_id }}" title="Descargar Reporte Excel" class="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition">
+                        <a href="/api/export/excel/sucursal/{{ suc.sucursal_id }}?ciclo_id={{ estado.ciclo.id }}" title="Descargar Reporte Excel" class="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-800 transition">
                             <i data-lucide="download" class="w-3.5 h-3.5"></i>
                         </a>
                     {% endif %}
                 </div>
+
+                {# Botón directo de recordatorio preventivo por WhatsApp / Correo para sucursales pendientes #}
+                {% if suc.reporte_estado not in ['ENVIADO', 'APROBADO'] and estado.fase_actual == 1 and user.rol in ['admin', 'brandon', 'jefe_credito'] %}
+                <div class="mt-2.5 pt-2 border-t border-dashed border-red-200 flex items-center justify-between gap-1">
+                    <span class="text-[10px] font-bold text-red-600 flex items-center gap-1">
+                        <i data-lucide="alert-circle" class="w-3 h-3"></i> Pendiente envío
+                    </span>
+                    <div class="flex items-center gap-1">
+                        <a href="{{ suc.whatsapp_url }}" target="_blank" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold rounded-md flex items-center gap-1 transition shadow-sm" title="Recordar por WhatsApp a {{ suc.gerente_nombre or 'Gerente' }}">
+                            <i data-lucide="message-circle" class="w-3 h-3"></i>
+                            <span>Recordar WhatsApp</span>
+                        </a>
+                        <a href="mailto:{{ suc.email_gerente }}?subject=Recordatorio:%20Reporte%20Semanal%20de%20Novedades%20Sucursal%20{{ suc.sucursal_nombre }}&body=Estimado%20Gerente,%20le%20recordamos%20enviar%20su%20reporte%20de%20novedades%20de%20combustible%20antes%20del%20corte%20del%20s%C3%A1bado." class="p-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 transition" title="Enviar recordatorio por correo electrónico">
+                            <i data-lucide="mail" class="w-3 h-3"></i>
+                        </a>
+                    </div>
+                </div>
+                {% endif %}
             </div>
             {% endfor %}
         </div>
@@ -419,4 +481,49 @@
     </div>
 
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const TEXTO_RECORDATORIO_GENERAL = {{ estado.recordatorio_general | tojson }};
+
+    function copiarRecordatorioGeneral() {
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(TEXTO_RECORDATORIO_GENERAL).then(() => {
+                mostrarCopiadoExito();
+            }).catch(() => fallbackCopiar());
+        } else {
+            fallbackCopiar();
+        }
+    }
+
+    function fallbackCopiar() {
+        const ta = document.createElement("textarea");
+        ta.value = TEXTO_RECORDATORIO_GENERAL;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        try {
+            document.execCommand("copy");
+            mostrarCopiadoExito();
+        } catch (err) {
+            alert("No se pudo copiar automáticamente. Por favor copia el texto manualmente.");
+        }
+        document.body.removeChild(ta);
+    }
+
+    function mostrarCopiadoExito() {
+        const btnText = document.getElementById("btn-copy-text");
+        if (btnText) {
+            const original = btnText.innerText;
+            btnText.innerText = "¡Copiado!";
+            setTimeout(() => { btnText.innerText = original; }, 2500);
+        }
+        if (typeof notyf !== 'undefined') {
+            notyf.success("Recordatorio general copiado al portapapeles para WhatsApp");
+        }
+    }
+</script>
 {% endblock %}

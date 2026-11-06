@@ -63,26 +63,39 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 # --- FUNCIONES AUXILIARES DE ESTADO ---
-def obtener_estado_completo_pipeline() -> Dict[str, Any]:
+def obtener_estado_completo_pipeline(ciclo_id: Optional[int] = None) -> Dict[str, Any]:
     """
     Calcula el estado general del pipeline, quién falta y los semáforos.
+    Permite consultar un ciclo específico mediante ciclo_id o el ciclo activo actual.
     """
     conn = get_db_connection()
     c = conn.cursor()
 
-    c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
-    ciclo = c.fetchone()
-    if not ciclo:
-        ciclo_id = asegurar_ciclo_actual(conn)
+    c.execute("SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+    row_latest = c.fetchone()
+    if not row_latest:
+        asegurar_ciclo_actual(conn)
+        c.execute("SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+        row_latest = c.fetchone()
+    latest_ciclo_id = row_latest["id"] if row_latest else None
+
+    if ciclo_id:
         c.execute("SELECT * FROM ciclos_semanales WHERE id = ?", (ciclo_id,))
+        ciclo = c.fetchone()
+        if not ciclo:
+            c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+            ciclo = c.fetchone()
+    else:
+        c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
         ciclo = c.fetchone()
 
     ciclo_dict = dict(ciclo)
     ciclo_id = ciclo_dict["id"]
+    es_ciclo_actual = (ciclo_id == latest_ciclo_id)
 
     # 1. Sucursales y sus estados
     c.execute('''
-    SELECT s.id as sucursal_id, s.nombre as sucursal_nombre, s.email_gerente,
+    SELECT s.id as sucursal_id, s.nombre as sucursal_nombre, s.email_gerente, s.telefono as sucursal_telefono,
            r.id as reporte_id, r.estado as reporte_estado, r.enviado_en,
            r.total_empleados, r.suma_base, r.suma_ajustes, r.suma_neto,
            u.nombre as gerente_nombre
@@ -94,11 +107,47 @@ def obtener_estado_completo_pipeline() -> Dict[str, Any]:
     ''', (ciclo_id,))
     sucursales_raw = [dict(r) for r in c.fetchall()]
 
+    # Generar enlaces y datos de recordatorio WhatsApp para cada sucursal
+    import urllib.parse
+    for s in sucursales_raw:
+        tel = s.get("sucursal_telefono") or ""
+        tel_digits = "".join(ch for ch in str(tel) if ch.isdigit())
+        if len(tel_digits) == 8:
+            wa_num = "505" + tel_digits
+        elif len(tel_digits) > 8:
+            wa_num = tel_digits
+        else:
+            wa_num = ""
+        s["whatsapp_numero"] = wa_num
+
+        nom_g = s.get("gerente_nombre") or f"Gerente {s['sucursal_nombre']}"
+        sab_str = ciclo_dict.get("fecha_sabado", "")
+        wa_msg = (
+            f"Hola {nom_g}, te recordamos que el reporte de novedades de combustible de la sucursal "
+            f"{s['sucursal_nombre']} para el corte del sábado {sab_str} aún está pendiente de envío. "
+            f"Por favor completarlo y enviarlo antes del cierre. Enlace: https://alfacredit-novedades.vercel.app/novedades"
+        )
+        s["whatsapp_mensaje"] = wa_msg
+        s["whatsapp_url"] = f"https://wa.me/{wa_num}?text={urllib.parse.quote(wa_msg)}" if wa_num else f"https://wa.me/?text={urllib.parse.quote(wa_msg)}"
+
     total_sucursales = len(sucursales_raw)
     sucursales_enviadas = [s for s in sucursales_raw if s.get("reporte_estado") in ["ENVIADO", "APROBADO"]]
     sucursales_pendientes = [s for s in sucursales_raw if s.get("reporte_estado") not in ["ENVIADO", "APROBADO"]]
     conteo_enviadas = len(sucursales_enviadas)
     porcentaje_gerentes = int((conteo_enviadas / total_sucursales * 100)) if total_sucursales > 0 else 0
+
+    # Recordatorio masivo general para el grupo de WhatsApp de Gerentes
+    nombres_pendientes = [s["sucursal_nombre"] for s in sucursales_pendientes]
+    str_pendientes = ", ".join(nombres_pendientes) if nombres_pendientes else "Ninguna"
+    sab_str = ciclo_dict.get("fecha_sabado", "")
+    recordatorio_general = (
+        f"🚨 *RECORDATORIO DE NOVEDADES - ALFACREDIT S.A.* 🚨\n\n"
+        f"Estimados Gerentes, les recordamos que el corte semanal para el sábado *{sab_str}* está próximo a cerrar.\n"
+        f"Sucursales pendientes de enviar reporte: *{str_pendientes}*.\n\n"
+        f"Agradecemos completar y enviar su informe a la brevedad en:\n"
+        f"👉 https://alfacredit-novedades.vercel.app/novedades"
+    )
+    recordatorio_general_encoded = urllib.parse.quote(recordatorio_general)
 
     # 2. Eventos Brandon
     c.execute("SELECT * FROM eventos_brandon WHERE ciclo_id = ? ORDER BY id DESC LIMIT 1", (ciclo_id,))
@@ -153,7 +202,7 @@ def obtener_estado_completo_pipeline() -> Dict[str, Any]:
         atraso_mensaje = f"Atraso en Fase 1: Faltan {len(sucursales_pendientes)} sucursales por enviar su reporte ({nombres_faltantes})."
         nivel_alerta = "danger" if conteo_enviadas < (total_sucursales / 2) else "warning"
 
-    # Actualizar estado del ciclo en BD si difiere
+    # Actualizar estado del ciclo en BD solo si es el ciclo actual (no alterar ciclos archivados)
     estado_enum_map = {
         1: 'FASE_1_GERENTES',
         2: 'FASE_2_BRANDON',
@@ -161,7 +210,7 @@ def obtener_estado_completo_pipeline() -> Dict[str, Any]:
         4: 'FASE_4_COMPLETADO'
     }
     nuevo_estado = estado_enum_map[fase_actual]
-    if ciclo_dict.get("estado_general") != nuevo_estado:
+    if es_ciclo_actual and ciclo_dict.get("estado_general") != nuevo_estado:
         c.execute("UPDATE ciclos_semanales SET estado_general = ? WHERE id = ?", (nuevo_estado, ciclo_id))
         conn.commit()
         ciclo_dict["estado_general"] = nuevo_estado
@@ -189,7 +238,11 @@ def obtener_estado_completo_pipeline() -> Dict[str, Any]:
         "evento_dania": evento_dania_dict,
         "suma_total_base": round(suma_total_base, 2),
         "suma_total_neto": round(suma_total_neto, 2),
-        "servidor_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        "servidor_hora": datetime.now().strftime("%d/%m/%Y %H:%M:%S"),
+        "es_ciclo_actual": es_ciclo_actual,
+        "latest_ciclo_id": latest_ciclo_id,
+        "recordatorio_general": recordatorio_general,
+        "recordatorio_general_encoded": recordatorio_general_encoded
     }
 
 def verificar_bloqueo_novedades(ciclo_id: int, conn) -> tuple[bool, str]:
@@ -410,11 +463,27 @@ async def logout(request: Request):
     return response
 
 @app.get("/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request, user: dict = Depends(require_auth)):
-    estado = obtener_estado_completo_pipeline()
+async def dashboard_page(
+    request: Request,
+    ciclo_id: Optional[int] = None,
+    user: dict = Depends(require_auth)
+):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+    SELECT id, fecha_sabado, fecha_inicio_pas, fecha_fin_pas, estado_general, cerrado_en
+    FROM ciclos_semanales
+    ORDER BY id DESC
+    ''')
+    ciclos_historial = [dict(r) for r in c.fetchall()]
+    conn.close()
+
+    estado = obtener_estado_completo_pipeline(ciclo_id=ciclo_id)
     return templates.TemplateResponse(request=request, name="dashboard.html", context={
         "user": user,
         "estado": estado,
+        "ciclos_historial": ciclos_historial,
+        "selected_ciclo_id": estado["ciclo"]["id"],
         "leyenda": LEYENDA_MAESTRA
     })
 
@@ -590,8 +659,8 @@ async def respaldos_page(request: Request, user: dict = Depends(require_auth)):
 # --- ENDPOINTS API REST ---
 
 @app.get("/api/status")
-async def api_get_status():
-    return obtener_estado_completo_pipeline()
+async def api_get_status(ciclo_id: Optional[int] = None):
+    return obtener_estado_completo_pipeline(ciclo_id=ciclo_id)
 
 @app.post("/api/novedades/save")
 async def api_save_novedades(request: Request, payload: dict, user: dict = Depends(require_auth)):

@@ -802,6 +802,32 @@ def realizar_corte_semanal_logica(usuario_dict: dict, conn=None) -> dict:
             c.execute("SELECT id as colaborador_id, nombre, cargo, estado_default as estado, combustible_base, talla, req_default as req, obs_default as obs FROM colaboradores WHERE sucursal_id = ? AND activo = 1 ORDER BY id ASC", (suc_id,))
             colaboradores_anteriores = [dict(r) for r in c.fetchall()]
 
+        # Evolución y depuración automática de estados para el nuevo ciclo:
+        # 1. 'BAJA' o 'INACTIVO': Excluidos automáticamente de la clonación
+        # 2. 'NUEVO': Evoluciona automáticamente a 'ACTIVO'
+        # 3. 'ACTIVO': Se mantiene intacto con su cargo y combustible base
+        colaboradores_evolucionados = []
+        for c_item in colaboradores_anteriores:
+            st = (c_item.get("estado") or "").strip().upper()
+            if st in ("BAJA", "INACTIVO"):
+                if c_item.get("colaborador_id"):
+                    c.execute("UPDATE colaboradores SET activo = 0 WHERE id = ?", (c_item["colaborador_id"],))
+                continue
+
+            c_nuevo = dict(c_item)
+            if st == "NUEVO":
+                c_nuevo["estado"] = "ACTIVO"
+                if c_item.get("colaborador_id"):
+                    c.execute("UPDATE colaboradores SET estado_default = 'ACTIVO' WHERE id = ?", (c_item["colaborador_id"],))
+            elif not st:
+                c_nuevo["estado"] = "ACTIVO"
+            else:
+                c_nuevo["estado"] = st
+
+            colaboradores_evolucionados.append(c_nuevo)
+
+        colaboradores_anteriores = colaboradores_evolucionados
+
         total_empleados = len(colaboradores_anteriores)
         suma_base = sum(float(c_item.get("combustible_base", 0.0) or 0.0) for c_item in colaboradores_anteriores)
         suma_neto = suma_base  # Con novedades limpias, deducciones son 0 y neto = base

@@ -45,6 +45,12 @@ function initWebSocket() {
 }
 
 function updateDashboardStatus(data) {
+    // Si el usuario está examinando un ciclo histórico específico, no sobreescribir con datos en vivo del ciclo actual
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has("ciclo_id") && data.ciclo && parseInt(urlParams.get("ciclo_id")) !== data.ciclo.id) {
+        return;
+    }
+
     // 1. Actualizar barra de estado / stepper
     const step1 = document.getElementById("step-1");
     const step2 = document.getElementById("step-2");
