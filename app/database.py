@@ -7,19 +7,27 @@ from datetime import datetime, timedelta
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Detección de entorno Serverless efímero (Vercel, AWS Lambda, o variable explícita)
-IS_SERVERLESS = bool(
-    os.environ.get("VERCEL") 
-    or os.environ.get("AWS_LAMBDA_FUNCTION_NAME") 
-    or os.environ.get("USE_TMP_DB")
-)
+def get_is_serverless() -> bool:
+    return bool(
+        os.environ.get("VERCEL") 
+        or os.environ.get("AWS_LAMBDA_FUNCTION_NAME") 
+        or os.environ.get("USE_TMP_DB")
+    )
 
-if IS_SERVERLESS:
-    TMP_DIR = os.environ.get("TMPDIR", "/tmp")
-    STORAGE_DIR = os.path.join(TMP_DIR, "alfacredit_storage")
-    DB_PATH = os.path.join(STORAGE_DIR, "alfacredit_novedades.db")
-else:
-    STORAGE_DIR = os.path.join(BASE_DIR, "storage")
-    DB_PATH = os.path.join(STORAGE_DIR, "database", "alfacredit_novedades.db")
+def get_storage_dir() -> str:
+    if get_is_serverless():
+        tmp_dir = os.environ.get("TMPDIR", "/tmp")
+        return os.path.join(tmp_dir, "alfacredit_storage")
+    return os.path.join(BASE_DIR, "storage")
+
+def get_db_path() -> str:
+    if get_is_serverless():
+        return os.path.join(get_storage_dir(), "alfacredit_novedades.db")
+    return os.path.join(get_storage_dir(), "database", "alfacredit_novedades.db")
+
+IS_SERVERLESS = get_is_serverless()
+STORAGE_DIR = get_storage_dir()
+DB_PATH = get_db_path()
 
 def hash_password(password: str) -> str:
     """Genera un hash seguro para contraseñas usando SHA-256 con salt fija"""
@@ -30,16 +38,29 @@ class LibsqlRow(dict):
     """
     Wrapper compatible con sqlite3.Row:
     Permite acceso por clave r['col'], por índice r[0], dict(r), r.get(), r.keys().
+    Soporta búsqueda insensible a mayúsculas/minúsculas.
     """
     def __init__(self, columns, values):
         super().__init__(zip(columns, values))
         self._columns = tuple(columns)
         self._values = tuple(values)
+        self._lower_map = {str(c).lower(): v for c, v in zip(columns, values)}
 
     def __getitem__(self, item):
         if isinstance(item, int):
             return self._values[item]
-        return super().__getitem__(item)
+        if item in self:
+            return super().__getitem__(item)
+        item_lower = str(item).lower()
+        if item_lower in self._lower_map:
+            return self._lower_map[item_lower]
+        raise KeyError(item)
+
+    def get(self, item, default=None):
+        try:
+            return self[item]
+        except (KeyError, IndexError):
+            return default
 
     def keys(self):
         return self._columns
@@ -54,14 +75,36 @@ class LibsqlCursor:
         self.lastrowid = None
         self.rowcount = 0
 
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        r = self.fetchone()
+        if r is None:
+            raise StopIteration
+        return r
+
     def execute(self, sql, params=None):
         clean_sql = sql.strip()
-        # Ignorar PRAGMAs locales que no aplican a Turso en la nube
+        # Manejar PRAGMAs locales que pueden diferir en la nube
         if clean_sql.upper().startswith("PRAGMA JOURNAL_MODE"):
             self._rows = []
             self._columns = ()
             self.rowcount = 0
             self.lastrowid = 0
+            return self
+        if clean_sql.upper().startswith("PRAGMA"):
+            try:
+                res = self._client.execute(clean_sql, [])
+                self._columns = tuple(res.columns) if hasattr(res, 'columns') and res.columns else ()
+                raw_rows = res.rows if hasattr(res, 'rows') else []
+                self._rows = [LibsqlRow(self._columns, r) for r in raw_rows]
+            except Exception:
+                self._rows = []
+                self._columns = ()
+            self._idx = 0
+            self.lastrowid = 0
+            self.rowcount = 0
             return self
 
         args = list(params) if params is not None else []
@@ -148,22 +191,23 @@ def get_db_connection():
         except Exception as e:
             print(f"Aviso: no se pudo conectar a Turso ({turso_url}): {e}. Usando fallback local.")
 
-    db_dir = os.path.dirname(DB_PATH)
+    db_path = get_db_path()
+    db_dir = os.path.dirname(db_path)
     if db_dir:
         os.makedirs(db_dir, exist_ok=True)
     
-    db_exists = os.path.exists(DB_PATH)
-    if IS_SERVERLESS and not db_exists:
+    db_exists = os.path.exists(db_path)
+    if get_is_serverless() and not db_exists:
         seed_db = os.path.join(BASE_DIR, "storage", "database", "alfacredit_novedades.db")
         if os.path.exists(seed_db):
             try:
                 import shutil
-                shutil.copy2(seed_db, DB_PATH)
+                shutil.copy2(seed_db, db_path)
                 db_exists = True
             except Exception as e:
                 print(f"Aviso: no se pudo copiar seed_db a /tmp: {e}")
 
-    conn = sqlite3.connect(DB_PATH, timeout=20.0)
+    conn = sqlite3.connect(db_path, timeout=20.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=DELETE;")
     conn.execute("PRAGMA foreign_keys=ON;")
@@ -373,6 +417,9 @@ def init_db():
 
     conn.commit()
 
+    # --- DATOS SEMILLA Y MIGRACIONES ---
+    p_hash = hash_password("1234")
+
     # --- MIGRACIÓN: UNIFICACIÓN DE MANAGUA BOLONIA Y MANAGUA NORTE EN UNA SOLA SUCURSAL 'MANAGUA' ---
     c.execute("SELECT id, nombre, email_gerente FROM sucursales WHERE nombre IN ('Managua Bolonia', 'Managua Norte', 'Managua')")
     m_rows = {row["nombre"]: row["id"] for row in c.fetchall()}
@@ -446,8 +493,6 @@ def init_db():
         conn.commit()
 
     # --- DATOS SEMILLA CON DOMINIO OFICIAL @ALFACREDITSA.COM (8 SUCURSALES) ---
-    p_hash = hash_password("1234")
-
     # Sucursales de AlfaCredit S.A. (Total 8 Sucursales Oficiales)
     sucursales_data = [
         ("Estelí", "gerente.esteli@alfacreditsa.com", "2713-0001"),
@@ -514,7 +559,20 @@ def init_db():
     }
 
     for old_em, new_em in email_migration_map.items():
-        c.execute("UPDATE usuarios SET email = ? WHERE LOWER(email) = ?", (new_em, old_em.lower()))
+        c.execute("SELECT id FROM usuarios WHERE LOWER(email) = ?", (old_em.lower(),))
+        old_u = c.fetchone()
+        if old_u:
+            c.execute("SELECT id FROM usuarios WHERE LOWER(email) = ?", (new_em.lower(),))
+            new_u = c.fetchone()
+            if new_u:
+                if old_u["id"] != new_u["id"]:
+                    c.execute("UPDATE reportes_sucursales SET usuario_id = ? WHERE usuario_id = ?", (new_u["id"], old_u["id"]))
+                    c.execute("UPDATE recuperacion_tokens SET usuario_id = ? WHERE usuario_id = ?", (new_u["id"], old_u["id"]))
+                    c.execute("UPDATE eventos_brandon SET usuario_id = ? WHERE usuario_id = ?", (new_u["id"], old_u["id"]))
+                    c.execute("UPDATE eventos_dania SET usuario_id = ? WHERE usuario_id = ?", (new_u["id"], old_u["id"]))
+                    c.execute("DELETE FROM usuarios WHERE id = ?", (old_u["id"],))
+            else:
+                c.execute("UPDATE usuarios SET email = ? WHERE id = ?", (new_em.lower(), old_u["id"]))
 
     # Insertar usuarios nuevos que falten
     for email, pw, nom, rol, suc_id in usuarios_data:

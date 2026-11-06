@@ -137,18 +137,46 @@ class TestAlfaCreditPlatform(unittest.TestCase):
         self.assertIn("alfa_theme", res_login.text)
         self.assertIn("theme-toggle-btn", res_login.text)
 
-        # Probar confirmación secundaria manual de correo
-        token = create_session_token(2, "adquisicionesylogistica@alfacreditsa.com")
-        self.client.cookies.set("alfacredit_session", token)
+        # Asegurar estado limpio antes de la prueba
+        conn = get_db_connection()
+        conn.execute("DELETE FROM eventos_brandon WHERE ciclo_id = (SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1)")
+        conn.execute("DELETE FROM eventos_dania WHERE ciclo_id = (SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1)")
+        conn.execute("UPDATE ciclos_semanales SET estado_general = 'FASE_1_GERENTES'")
+        conn.commit()
+        conn.close()
 
-        res_confirm = self.client.post("/api/email/confirm-secondary", data={
-            "tipo": "solicitud_brandon",
-            "notas": "Prueba de confirmación manual de recepción de correo"
-        })
-        self.assertEqual(res_confirm.status_code, 200)
-        data = res_confirm.json()
-        self.assertTrue(data["success"])
-        self.assertIn("solicitud de combustible", data["message"].lower())
+        try:
+            # Probar confirmación secundaria manual de correo (solicitud Brandon -> Fase 3)
+            token = create_session_token(2, "adquisicionesylogistica@alfacreditsa.com")
+            self.client.cookies.set("alfacredit_session", token)
+
+            res_confirm = self.client.post("/api/email/confirm-secondary", data={
+                "tipo": "solicitud_brandon",
+                "notas": "Prueba de confirmación manual de recepción de correo"
+            })
+            self.assertEqual(res_confirm.status_code, 200)
+            data = res_confirm.json()
+            self.assertTrue(data["success"])
+            self.assertIn("solicitud de combustible", data["message"].lower())
+            self.assertEqual(data["nuevo_estado"]["fase_actual"], 3, "Debe avanzar a Fase 3 (Dania)")
+
+            # Probar confirmación secundaria manual de comprobante de Dania -> Fase 4
+            res_confirm_d = self.client.post("/api/email/confirm-secondary", json={
+                "tipo": "comprobante_dania",
+                "notas": "Prueba confirmación manual comprobante Dania"
+            })
+            self.assertEqual(res_confirm_d.status_code, 200)
+            data_d = res_confirm_d.json()
+            self.assertTrue(data_d["success"])
+            self.assertEqual(data_d["nuevo_estado"]["fase_actual"], 4, "Debe avanzar a Fase 4 (Completado)")
+        finally:
+            # Limpiar datos creados en el test para no ensuciar la base de datos
+            conn = get_db_connection()
+            conn.execute("DELETE FROM eventos_brandon WHERE ciclo_id = (SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1)")
+            conn.execute("DELETE FROM eventos_dania WHERE ciclo_id = (SELECT id FROM ciclos_semanales ORDER BY id DESC LIMIT 1)")
+            conn.execute("UPDATE ciclos_semanales SET estado_general = 'FASE_1_GERENTES'")
+            conn.commit()
+            conn.close()
 
     def test_08_turso_libsql_compatibility(self):
         """Verifica que el wrapper LibsqlConnection y LibsqlRow funcione correctamente"""
@@ -169,8 +197,14 @@ class TestAlfaCreditPlatform(unittest.TestCase):
 
         row = conn.execute("SELECT * FROM test_turso WHERE nombre = ?", ("Managua",)).fetchone()
         self.assertEqual(row["nombre"], "Managua")
+        self.assertEqual(row["NOMBRE"], "Managua")
         self.assertEqual(row["valor"], 1500.0)
         self.assertEqual(dict(row)["nombre"], "Managua")
+
+        # Verificar iterabilidad de cursor (for r in cur)
+        all_rows = list(conn.execute("SELECT * FROM test_turso"))
+        self.assertEqual(len(all_rows), 1)
+        self.assertEqual(all_rows[0]["nombre"], "Managua")
 
         conn.close()
         if os.path.exists(temp_db):

@@ -128,27 +128,27 @@ def obtener_estado_completo_pipeline() -> Dict[str, Any]:
     atraso_responsable = ""
     nivel_alerta = "info" # 'info', 'warning', 'danger', 'success'
 
-    if conteo_enviadas < total_sucursales:
-        fase_actual = 1
-        nombres_faltantes = ", ".join([s["sucursal_nombre"] for s in sucursales_pendientes])
-        atraso_responsable = "Gerentes de Sucursal"
-        atraso_mensaje = f"Atraso en Fase 1: Faltan {len(sucursales_pendientes)} sucursales por enviar su reporte ({nombres_faltantes})."
-        nivel_alerta = "danger" if conteo_enviadas < (total_sucursales / 2) else "warning"
-    elif not evento_brandon_dict:
-        fase_actual = 2
-        atraso_responsable = "Brandon (Coordinador Combustible)"
-        atraso_mensaje = "Atraso en Fase 2: Todas las sucursales completaron sus reportes. Brandon tiene pendiente enviar la solicitud consolidada por correo a Finanzas."
-        nivel_alerta = "warning"
-    elif not evento_dania_dict:
-        fase_actual = 3
-        atraso_responsable = "Dania (Tesorería / Finanzas)"
-        atraso_mensaje = "Atraso en Fase 3: Brandon ya envió la solicitud. Dania tiene pendiente realizar el depósito y enviar/subir el comprobante bancario."
-        nivel_alerta = "warning"
-    else:
+    if evento_dania_dict:
         fase_actual = 4
         atraso_responsable = "Ninguno"
         atraso_mensaje = "¡Proceso de Novedades y Combustible Completado con Éxito! Fondos listos y comprobante verificado."
         nivel_alerta = "success"
+    elif evento_brandon_dict:
+        fase_actual = 3
+        atraso_responsable = "Dania (Tesorería / Finanzas)"
+        atraso_mensaje = "Atraso en Fase 3: Brandon ya envió la solicitud. Dania tiene pendiente realizar el depósito y enviar/subir el comprobante bancario."
+        nivel_alerta = "warning"
+    elif conteo_enviadas >= total_sucursales and total_sucursales > 0:
+        fase_actual = 2
+        atraso_responsable = "Brandon (Coordinador Combustible)"
+        atraso_mensaje = "Atraso en Fase 2: Todas las sucursales completaron sus reportes. Brandon tiene pendiente enviar la solicitud consolidada por correo a Finanzas."
+        nivel_alerta = "warning"
+    else:
+        fase_actual = 1
+        nombres_faltantes = ", ".join([s["sucursal_nombre"] for s in sucursales_pendientes]) if sucursales_pendientes else "Ninguna"
+        atraso_responsable = "Gerentes de Sucursal"
+        atraso_mensaje = f"Atraso en Fase 1: Faltan {len(sucursales_pendientes)} sucursales por enviar su reporte ({nombres_faltantes})."
+        nivel_alerta = "danger" if conteo_enviadas < (total_sucursales / 2) else "warning"
 
     # Actualizar estado del ciclo en BD si difiere
     estado_enum_map = {
@@ -792,19 +792,36 @@ async def api_email_sync(request: Request, user: dict = Depends(require_auth)):
 @app.post("/api/email/confirm-secondary")
 async def api_confirm_secondary_email(
     request: Request,
-    tipo: Optional[str] = Form("auto"),
-    notas: Optional[str] = Form(""),
+    tipo: Optional[str] = Form(None),
+    notas: Optional[str] = Form(None),
     user: dict = Depends(require_auth)
 ):
     """
     Confirmación secundaria inmediata de recepción de correo para Brandon / Administrador.
     Permite validar que el correo ya cayó sin depender de la conexión o comprobación automática IMAP.
+    Soporta peticiones enviadas tanto por Form-data como por JSON.
     """
     if user["rol"] not in ["admin", "brandon"]:
         raise HTTPException(
             status_code=403, 
             detail="Acceso restringido: Solo Administrador y Brandon pueden confirmar manualmente la recepción secundaria de correos."
         )
+
+    # Permitir lectura tanto de form-data como de JSON
+    if tipo is None:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                tipo = body.get("tipo")
+                if notas is None:
+                    notas = body.get("notas")
+        except Exception:
+            pass
+
+    if tipo is None:
+        tipo = "auto"
+    if notas is None:
+        notas = ""
 
     conn = get_db_connection()
     c = conn.cursor()
@@ -854,6 +871,14 @@ async def api_confirm_secondary_email(
         c.execute("SELECT id FROM eventos_dania WHERE ciclo_id = ?", (ciclo_id,))
         ev_d = c.fetchone()
         if not ev_d:
+            # Asegurar evento_brandon previo para consistencia de auditoría y visualización
+            c.execute("SELECT id FROM eventos_brandon WHERE ciclo_id = ?", (ciclo_id,))
+            if not c.fetchone():
+                c.execute('''
+                INSERT INTO eventos_brandon (ciclo_id, usuario_id, correo_destinatario, asunto, cuerpo, fecha_envio, metodo)
+                VALUES (?, ?, 'dania.tesoreria@alfacreditsa.com', ?, 'Auto-generado por confirmación secundaria de Dania', ?, 'MANUAL_SECUNDARIO')
+                ''', (ciclo_id, user["id"], f"Solicitud de Combustible - Corte {ciclo['fecha_sabado']}", fecha_ahora))
+
             c.execute("SELECT SUM(suma_neto) as total_neto FROM reportes_sucursales WHERE ciclo_id = ?", (ciclo_id,))
             tot_row = c.fetchone()
             monto = float(tot_row["total_neto"] or 0.0) if tot_row else 0.0

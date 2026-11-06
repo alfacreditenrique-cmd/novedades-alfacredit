@@ -324,7 +324,7 @@ html.dark textarea {
 }
 
 html.dark tr:hover {
-  background-color: #334155/50 !important;
+  background-color: rgba(51, 65, 85, 0.5) !important;
 }
 
 html.dark .novedad-select {

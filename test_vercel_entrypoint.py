@@ -12,11 +12,24 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
+import importlib
+if "app.database" in sys.modules:
+    import app.database
+    importlib.reload(app.database)
+
 from fastapi.testclient import TestClient
 from api.index import app, handler
-from app.database import DB_PATH, get_db_connection, init_db
+from app.database import DB_PATH, get_db_path, get_db_connection, init_db
 
 class TestVercelEntrypoint(unittest.TestCase):
+    @classmethod
+    def tearDownClass(cls):
+        os.environ.pop("VERCEL", None)
+        os.environ.pop("USE_TMP_DB", None)
+        if "app.database" in sys.modules:
+            import app.database
+            importlib.reload(app.database)
+
     def setUp(self):
         # Asegurar que init_db funciona en entorno /tmp efímero
         init_db()
@@ -29,10 +42,11 @@ class TestVercelEntrypoint(unittest.TestCase):
     def test_tmp_database_path(self):
         # Verificar que DB_PATH está en TMPDIR y no en storage/database/ local
         temp_dir_norm = os.path.normpath(tempfile.gettempdir()).lower()
-        db_path_norm = os.path.normpath(DB_PATH).lower()
+        active_db_path = get_db_path()
+        db_path_norm = os.path.normpath(active_db_path).lower()
         self.assertTrue(
             db_path_norm.startswith(temp_dir_norm) or "/tmp" in db_path_norm,
-            f"DB_PATH no está en directorio temporal: {DB_PATH}"
+            f"DB_PATH no está en directorio temporal: {active_db_path}"
         )
 
     def test_api_health_or_login(self):

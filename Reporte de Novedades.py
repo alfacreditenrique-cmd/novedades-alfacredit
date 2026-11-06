@@ -60,7 +60,7 @@ class NovedadesApp:
             ("V", "Vacaciones", "-1 día", -1.0),
             ("MD", "Medio Día", "-0.5 día", -0.5),
             ("S", "Subsidio", "-1 día", -1.0),
-            ("B", "Baja", "-1 día", -1.0),
+            ("B", "Baja / Ausencia", "-1 día", -1.0),
             ("F", "Falta", "-1 día", -1.0),
             ("N", "Nuevo", "+1 (Suma)", 1.0),
             ("R", "Reposición", "+1 (Suma)", 1.0),
