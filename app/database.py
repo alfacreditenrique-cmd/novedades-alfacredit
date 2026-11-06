@@ -735,7 +735,7 @@ def realizar_corte_semanal_logica(usuario_dict: dict, conn=None) -> dict:
 
     # 3. Archivar ciclo actual
     fecha_ahora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    c.execute("UPDATE ciclos_semanales SET cerrado_en = COALESCE(cerrado_en, ?) WHERE id = ?", (fecha_ahora, ciclo_id))
+    c.execute("UPDATE ciclos_semanales SET estado_general = 'FASE_4_COMPLETADO', cerrado_en = COALESCE(cerrado_en, ?) WHERE id = ?", (fecha_ahora, ciclo_id))
 
     # 4. Calcular el nuevo sábado (+7 días) y fechas de corte
     fsab_actual = datetime.strptime(ciclo_dict["fecha_sabado"], "%Y-%m-%d").date()
@@ -793,6 +793,9 @@ def realizar_corte_semanal_logica(usuario_dict: dict, conn=None) -> dict:
             ORDER BY id ASC
             ''', (rep_ant["id"],))
             colaboradores_anteriores = [dict(r) for r in c.fetchall()]
+
+        # Filtrar filas vacías o sin nombre
+        colaboradores_anteriores = [c_item for c_item in colaboradores_anteriores if (c_item.get("nombre") or "").strip()]
 
         # Fallback: si no había filas en el reporte anterior, obtener del maestro de colaboradores
         if not colaboradores_anteriores:

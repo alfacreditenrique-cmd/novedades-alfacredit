@@ -28,9 +28,9 @@
                 <span>Confirmar Correo (Secundario)</span>
             </button>
 
-            <button onclick="realizarCorteSemanal({{ estado.fase_actual }})" class="px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm {% if estado.fase_actual == 4 %}bg-purple-700 hover:bg-purple-800 text-white shadow-purple-500/30 ring-2 ring-purple-400/50 animate-pulse{% else %}bg-slate-200 hover:bg-slate-300 text-slate-700{% endif %}" title="{% if estado.fase_actual == 4 %}Fondos Despachados listos: Haz clic para archivar la semana y abrir el nuevo ciclo{% else %}Disponible una vez completada la Fase 4 (Fondos Despachados){% endif %}">
+            <button id="btn-corte-semanal" onclick="realizarCorteSemanal({{ estado.fase_actual }})" class="px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm {% if estado.fase_actual == 4 %}bg-purple-700 hover:bg-purple-800 text-white shadow-purple-500/30 ring-2 ring-purple-400/50 animate-pulse{% else %}bg-slate-200 hover:bg-slate-300 text-slate-700{% endif %}" title="{% if estado.fase_actual == 4 %}Fondos Despachados listos: Haz clic para limpiar novedades, archivar la semana y abrir el nuevo ciclo{% else %}Disponible una vez completada la Fase 4 (Fondos Despachados){% endif %}">
                 <i data-lucide="scissors" class="w-4 h-4"></i>
-                <span>Corte Semanal / Iniciar Nuevo Ciclo</span>
+                <span>Limpiar / Corte Semanal</span>
             </button>
             {% endif %}
 

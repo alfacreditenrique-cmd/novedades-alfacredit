@@ -217,10 +217,9 @@ def verificar_bloqueo_novedades(ciclo_id: int, conn) -> tuple[bool, str]:
     ev_d = c.fetchone()
 
     if ev_d or estado_gen == "FASE_4_COMPLETADO":
-        return True, "El ciclo semanal ha sido completado y los fondos han sido despachados (Fase 4). Las novedades están en modo de SOLO LECTURA hasta que la Coordinación (Brandon) realice el corte semanal e inicie el nuevo ciclo."
-    elif ev_b or estado_gen in ("FASE_3_DANIA", "FASE_2_BRANDON"):
-        if ev_b or estado_gen == "FASE_3_DANIA":
-            return True, "La Coordinación (Brandon) ya formalizó y envió la solicitud de combustible a Finanzas. El reporte de novedades se encuentra bloqueado en modo de SOLO LECTURA hasta que se complete el despacho de fondos (Fase 4) y se inicie el nuevo ciclo semanal."
+        return True, "El ciclo semanal actual ha concluido con éxito y los fondos han sido despachados (Fase 4). Las novedades están en modo de SOLO LECTURA hasta que la Coordinación (Brandon) realice el corte semanal e inicie el nuevo ciclo con el botón de limpiar."
+    elif ev_b or estado_gen == "FASE_3_DANIA":
+        return True, "La Coordinación (Brandon) ya formalizó y envió la solicitud de combustible a Finanzas. El reporte de novedades se encuentra bloqueado en modo de SOLO LECTURA hasta que se complete el despacho de fondos (Fase 4) y se realice el corte semanal."
 
     return False, ""
 
@@ -448,7 +447,12 @@ async def novedades_page(
 
     # Ciclo activo
     c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
-    ciclo = dict(c.fetchone())
+    ciclo = c.fetchone()
+    if not ciclo:
+        ciclo_id = asegurar_ciclo_actual(conn)
+        c.execute("SELECT * FROM ciclos_semanales WHERE id = ?", (ciclo_id,))
+        ciclo = c.fetchone()
+    ciclo = dict(ciclo)
 
     # Reporte de esta sucursal
     c.execute('''
@@ -739,6 +743,8 @@ async def api_corte_semanal(request: Request, user: dict = Depends(require_auth)
 
     try:
         resultado = realizar_corte_semanal_logica(user)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al ejecutar el corte semanal: {str(e)}")
 
@@ -755,6 +761,7 @@ async def api_corte_semanal(request: Request, user: dict = Depends(require_auth)
     return {
         "success": True,
         "message": f"Corte semanal completado exitosamente. Se ha iniciado el nuevo ciclo para el corte del sábado {resultado['fecha_sabado']}. Todas las sucursales están listas en estado PENDIENTE con novedades limpias y colaboradores intactos para que los gerentes comiencen a trabajar.",
+        "ciclo_anterior_id": resultado["ciclo_anterior_id"],
         "nuevo_ciclo_id": resultado["nuevo_ciclo_id"],
         "fecha_sabado": resultado["fecha_sabado"],
         "nuevo_estado": nuevo_estado
@@ -1055,8 +1062,26 @@ async def api_email_save_config(payload: dict, user: dict = Depends(require_auth
 
 # --- EXPORTACIONES Y DESCARGAS ---
 
+@app.get("/api/ciclos/historial")
+async def api_ciclos_historial(user: dict = Depends(require_auth)):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute('''
+    SELECT id, fecha_sabado, fecha_inicio_pas, fecha_fin_pas, fecha_inicio_fut, fecha_fin_fut,
+           estado_general, total_combustible_aprobado, cerrado_en, creado_en
+    FROM ciclos_semanales
+    ORDER BY id DESC
+    ''')
+    historial = [dict(r) for r in c.fetchall()]
+    conn.close()
+    return {"historial": historial}
+
 @app.get("/api/export/excel/sucursal/{sucursal_id}")
-async def api_export_excel_sucursal(sucursal_id: int, user: dict = Depends(require_auth)):
+async def api_export_excel_sucursal(
+    sucursal_id: int,
+    ciclo_id: Optional[int] = None,
+    user: dict = Depends(require_auth)
+):
     # Restricción: Si es gerente, únicamente puede descargar el reporte de su propia sucursal
     if user["rol"] == "gerente" and user.get("sucursal_id") != sucursal_id:
         raise HTTPException(
@@ -1066,7 +1091,10 @@ async def api_export_excel_sucursal(sucursal_id: int, user: dict = Depends(requi
 
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+    if ciclo_id:
+        c.execute("SELECT * FROM ciclos_semanales WHERE id = ?", (ciclo_id,))
+    else:
+        c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
     ciclo = c.fetchone()
     c.execute("SELECT * FROM sucursales WHERE id = ?", (sucursal_id,))
     suc = c.fetchone()
@@ -1100,7 +1128,10 @@ async def api_export_excel_sucursal(sucursal_id: int, user: dict = Depends(requi
     )
 
 @app.get("/api/export/excel/consolidado")
-async def api_export_excel_consolidado(user: dict = Depends(require_auth)):
+async def api_export_excel_consolidado(
+    ciclo_id: Optional[int] = None,
+    user: dict = Depends(require_auth)
+):
     if user["rol"] == "gerente":
         raise HTTPException(
             status_code=403,
@@ -1109,7 +1140,10 @@ async def api_export_excel_consolidado(user: dict = Depends(require_auth)):
 
     conn = get_db_connection()
     c = conn.cursor()
-    c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+    if ciclo_id:
+        c.execute("SELECT * FROM ciclos_semanales WHERE id = ?", (ciclo_id,))
+    else:
+        c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
     ciclo = c.fetchone()
     if not ciclo:
         conn.close()

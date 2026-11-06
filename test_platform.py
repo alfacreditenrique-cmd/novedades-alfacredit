@@ -304,16 +304,18 @@ class TestAlfaCreditPlatform(unittest.TestCase):
         # 5. Verificar estado de la base de datos tras el corte
         conn = get_db_connection()
         c = conn.cursor()
-        # El ciclo anterior debe tener cerrado_en poblado
-        c.execute("SELECT cerrado_en FROM ciclos_semanales ORDER BY id ASC LIMIT 1")
+        # El ciclo anterior debe tener cerrado_en y estado FASE_4_COMPLETADO
+        c.execute("SELECT id, fecha_sabado, cerrado_en, estado_general FROM ciclos_semanales WHERE id = ?", (data_corte["ciclo_anterior_id"],))
         old_c = c.fetchone()
         self.assertIsNotNone(old_c["cerrado_en"])
+        self.assertEqual(old_c["estado_general"], "FASE_4_COMPLETADO")
 
         # El nuevo ciclo debe estar en FASE_1_GERENTES
-        c.execute("SELECT * FROM ciclos_semanales ORDER BY id DESC LIMIT 1")
+        c.execute("SELECT * FROM ciclos_semanales WHERE id = ?", (data_corte["nuevo_ciclo_id"],))
         new_c = c.fetchone()
         self.assertEqual(new_c["estado_general"], "FASE_1_GERENTES")
-        self.assertNotEqual(new_c["fecha_sabado"], old_c)
+        self.assertNotEqual(new_c["fecha_sabado"], old_c["fecha_sabado"])
+        self.assertNotEqual(new_c["id"], old_c["id"])
 
         # Todas las 8 sucursales deben tener reporte en PENDIENTE
         c.execute("SELECT COUNT(*) as cnt FROM reportes_sucursales WHERE ciclo_id = ? AND estado = 'PENDIENTE'", (new_c["id"],))
@@ -343,6 +345,18 @@ class TestAlfaCreditPlatform(unittest.TestCase):
         res_new_page = self.client.get("/novedades")
         self.assertEqual(res_new_page.status_code, 200)
         self.assertNotIn("Periodo de Novedades Bloqueado", res_new_page.text)
+
+        # 7. Verificar endpoint de historial de ciclos
+        self.client.cookies.set("alfacredit_session", token_brandon)
+        res_historial = self.client.get("/api/ciclos/historial")
+        self.assertEqual(res_historial.status_code, 200)
+        ciclos_list = res_historial.json()["historial"]
+        self.assertGreaterEqual(len(ciclos_list), 2, "Debe listar ciclo previo archivado y ciclo actual")
+
+        # 8. Descarga de Excel histórico usando ciclo_id
+        res_excel_hist = self.client.get(f"/api/export/excel/consolidado?ciclo_id={old_c['id']}")
+        self.assertEqual(res_excel_hist.status_code, 200)
+        self.assertTrue(len(res_excel_hist.content) > 1000)
 
 if __name__ == "__main__":
     unittest.main()

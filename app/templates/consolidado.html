@@ -17,9 +17,9 @@
         </div>
 
         <div class="flex items-center flex-wrap gap-2">
-            <button onclick="realizarCorteSemanal({{ estado.fase_actual }})" class="px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm {% if estado.fase_actual == 4 %}bg-purple-700 hover:bg-purple-800 text-white shadow-purple-500/30 ring-2 ring-purple-400/50 animate-pulse{% else %}bg-slate-200 hover:bg-slate-300 text-slate-700{% endif %}" title="{% if estado.fase_actual == 4 %}Fondos Despachados listos: Realizar corte e iniciar nuevo ciclo{% else %}Disponible una vez completada la Fase 4 (Fondos Despachados){% endif %}">
+            <button id="btn-corte-consolidado" onclick="realizarCorteSemanal({{ estado.fase_actual }})" class="px-4 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm {% if estado.fase_actual == 4 %}bg-purple-700 hover:bg-purple-800 text-white shadow-purple-500/30 ring-2 ring-purple-400/50 animate-pulse{% else %}bg-slate-200 hover:bg-slate-300 text-slate-700{% endif %}" title="{% if estado.fase_actual == 4 %}Fondos Despachados listos: Limpiar novedades, archivar la semana y realizar corte{% else %}Disponible una vez completada la Fase 4 (Fondos Despachados){% endif %}">
                 <i data-lucide="scissors" class="w-4 h-4"></i>
-                <span>Corte Semanal / Iniciar Nuevo Ciclo</span>
+                <span>Limpiar / Corte Semanal</span>
             </button>
 
             <a href="/api/export/excel/consolidado" class="px-4 py-2 bg-[#27ae60] hover:bg-[#219150] text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center space-x-1">
@@ -44,7 +44,7 @@
         </div>
         <button onclick="realizarCorteSemanal(4)" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 text-xs font-black rounded-lg shadow-lg hover:shadow-xl transition flex items-center space-x-2 shrink-0">
             <i data-lucide="scissors" class="w-4 h-4"></i>
-            <span>REALIZAR CORTE SEMANAL AHORA</span>
+            <span>LIMPIAR Y REALIZAR CORTE SEMANAL AHORA</span>
         </button>
     </div>
     {% endif %}

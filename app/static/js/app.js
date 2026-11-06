@@ -92,6 +92,38 @@ function updateDashboardStatus(data) {
     const totalNeto = document.getElementById("kpi-total-neto");
     if (totalBase) totalBase.innerText = `C$ ${data.suma_total_base.toLocaleString('es-NI', {minimumFractionDigits: 2})}`;
     if (totalNeto) totalNeto.innerText = `C$ ${data.suma_total_neto.toLocaleString('es-NI', {minimumFractionDigits: 2})}`;
+
+    // 5. Estado dinámico para botones de corte semanal
+    window.currentFaseActual = data.fase_actual;
+    const btnCorte = document.getElementById("btn-corte-semanal");
+    const btnCorteConsolidado = document.getElementById("btn-corte-consolidado");
+    [btnCorte, btnCorteConsolidado].forEach(btn => {
+        if (!btn) return;
+        if (data.fase_actual === 4) {
+            btn.className = "px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm bg-purple-700 hover:bg-purple-800 text-white shadow-purple-500/30 ring-2 ring-purple-400/50 animate-pulse";
+            btn.title = "Fondos Despachados listos: Limpiar novedades, archivar la semana y realizar corte";
+        } else {
+            btn.className = "px-3 py-2 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition shadow-sm bg-slate-200 hover:bg-slate-300 text-slate-700";
+            btn.title = "Disponible una vez completada la Fase 4 (Fondos Despachados)";
+        }
+    });
+
+    // 6. Bloqueo en tiempo real si el usuario tiene abierta la pantalla de novedades
+    const liveLockBanner = document.getElementById("novedades-live-lock-notice");
+    if (liveLockBanner && (data.fase_actual >= 3 || data.evento_brandon)) {
+        liveLockBanner.classList.remove("hidden");
+        document.querySelectorAll(".novedad-select, .combustible-base, .input-estado, .input-talla, .input-req, .input-obs").forEach(el => el.disabled = true);
+        const bSave = document.getElementById("btn-guardar-borrador");
+        const bSub = document.getElementById("btn-enviar-oficial");
+        const bAdd = document.getElementById("btn-agregar-empleado");
+        const bSaveB = document.getElementById("btn-guardar-borrador-bottom");
+        const bSubB = document.getElementById("btn-enviar-oficial-bottom");
+        if (bSave) bSave.disabled = true;
+        if (bSub) bSub.disabled = true;
+        if (bAdd) bAdd.disabled = true;
+        if (bSaveB) bSaveB.disabled = true;
+        if (bSubB) bSubB.disabled = true;
+    }
 }
 
 // LÓGICA DE CÁLCULO DE NOVEDADES EN LA TABLA
@@ -579,14 +611,26 @@ async function confirmarCorreoSecundario() {
 // CORTE SEMANAL / INICIAR NUEVO CICLO (BRANDON / ADMIN)
 // ==========================================
 async function realizarCorteSemanal(faseActual) {
-    if (faseActual < 4) {
+    let fase = (window.currentFaseActual !== undefined) ? window.currentFaseActual : faseActual;
+    if (fase === undefined || fase < 4) {
+        try {
+            const checkRes = await fetch("/api/pipeline/status");
+            if (checkRes.ok) {
+                const checkData = await checkRes.json();
+                fase = checkData.fase_actual;
+                window.currentFaseActual = fase;
+            }
+        } catch (e) {}
+    }
+
+    if (fase < 4) {
         Swal.fire({
             icon: "warning",
             title: "Corte No Permitido Todavía",
             html: `
                 <div class="text-left text-xs space-y-2">
                     <p class="text-slate-700 dark:text-slate-200">
-                        El ciclo semanal actual aún se encuentra en <b>Fase ${faseActual}</b>.
+                        El ciclo semanal actual aún se encuentra en <b>Fase ${fase || 1}</b>.
                     </p>
                     <p class="text-slate-600 dark:text-slate-300">
                         Para poder realizar el corte semanal y limpiar las novedades, es requisito indispensable que el acápite de <b>Fondos Despachados (Fase 4 - Depósito de Dania verificado)</b> esté completado al 100%.
