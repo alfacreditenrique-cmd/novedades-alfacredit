@@ -178,8 +178,34 @@ def is_using_turso() -> bool:
     return bool(os.environ.get("TURSO_DATABASE_URL", "").strip())
 
 
+def sync_cloud_pull(force: bool = False) -> bool:
+    """Sincroniza la base de datos local desde el Cloud Store centralizado"""
+    if is_using_turso():
+        return False
+    try:
+        from app.cloud_sync import is_cloud_sync_enabled, pull_latest_db_from_cloud
+        if is_cloud_sync_enabled():
+            return pull_latest_db_from_cloud(get_db_path(), force=force)
+    except Exception as e:
+        print(f"[CLOUDSYNC PULL NOTICE]: {e}")
+    return False
+
+
+def sync_cloud_push(user_email: str = "sistema") -> bool:
+    """Sube la base de datos local al Cloud Store centralizado"""
+    if is_using_turso():
+        return False
+    try:
+        from app.cloud_sync import is_cloud_sync_enabled, push_db_to_cloud
+        if is_cloud_sync_enabled():
+            return push_db_to_cloud(get_db_path(), user_email=user_email)
+    except Exception as e:
+        print(f"[CLOUDSYNC PUSH NOTICE]: {e}")
+    return False
+
+
 def get_db_connection():
-    """Obtiene una conexión a la base de datos (Turso libSQL en la nube o SQLite local)"""
+    """Obtiene una conexión a la base de datos (Turso libSQL en la nube o SQLite con CloudSync)"""
     turso_url = os.environ.get("TURSO_DATABASE_URL", "").strip()
     turso_token = os.environ.get("TURSO_AUTH_TOKEN", "").strip()
 
@@ -197,7 +223,18 @@ def get_db_connection():
         os.makedirs(db_dir, exist_ok=True)
     
     db_exists = os.path.exists(db_path)
-    if get_is_serverless() and not db_exists:
+    
+    # En entorno Serverless efímero (Vercel), sincronizar de la nube primero
+    try:
+        from app.cloud_sync import is_cloud_sync_enabled, pull_latest_db_from_cloud
+        if is_cloud_sync_enabled():
+            pulled = pull_latest_db_from_cloud(db_path, force=not db_exists)
+            if pulled and os.path.exists(db_path):
+                db_exists = True
+    except Exception as e:
+        print(f"[CLOUDSYNC INIT NOTICE]: {e}")
+
+    if not db_exists:
         seed_db = os.path.join(BASE_DIR, "storage", "database", "alfacredit_novedades.db")
         if os.path.exists(seed_db):
             try:
@@ -205,13 +242,14 @@ def get_db_connection():
                 shutil.copy2(seed_db, db_path)
                 db_exists = True
             except Exception as e:
-                print(f"Aviso: no se pudo copiar seed_db a /tmp: {e}")
+                print(f"Aviso: no se pudo copiar seed_db: {e}")
 
     conn = sqlite3.connect(db_path, timeout=20.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=DELETE;")
     conn.execute("PRAGMA foreign_keys=ON;")
     return conn
+
 
 def init_db():
     """Crea todas las tablas si no existen e inserta datos iniciales"""

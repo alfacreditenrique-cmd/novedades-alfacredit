@@ -11,7 +11,8 @@ from fastapi.templating import Jinja2Templates
 
 from app.database import (
     get_db_connection, init_db, asegurar_ciclo_actual, hash_password,
-    IS_SERVERLESS, STORAGE_DIR, realizar_corte_semanal_logica
+    IS_SERVERLESS, STORAGE_DIR, realizar_corte_semanal_logica,
+    is_using_turso, sync_cloud_pull, sync_cloud_push, get_db_path
 )
 from app.auth import (
     get_current_user, require_auth, require_role, create_session_token, COOKIE_NAME, verify_password,
@@ -68,6 +69,7 @@ def obtener_estado_completo_pipeline(ciclo_id: Optional[int] = None) -> Dict[str
     Calcula el estado general del pipeline, quién falta y los semáforos.
     Permite consultar un ciclo específico mediante ciclo_id o el ciclo activo actual.
     """
+    sync_cloud_pull(force=False)
     conn = get_db_connection()
     c = conn.cursor()
 
@@ -222,6 +224,7 @@ def obtener_estado_completo_pipeline(ciclo_id: Optional[int] = None) -> Dict[str
         c.execute("UPDATE ciclos_semanales SET estado_general = ? WHERE id = ?", (nuevo_estado, ciclo_id))
         conn.commit()
         ciclo_dict["estado_general"] = nuevo_estado
+        sync_cloud_push("pipeline_auto_transition")
 
     # Suma total combustible calculado y neto
     suma_total_base = sum(s.get("suma_base", 0.0) or 0.0 for s in sucursales_raw)
@@ -287,6 +290,7 @@ def verificar_bloqueo_novedades(ciclo_id: int, conn) -> tuple[bool, str]:
 # --- EVENTOS DE INICIO ---
 @app.on_event("startup")
 async def startup_event():
+    sync_cloud_pull(force=True)
     init_db()
     # Tarea de fondo para auto-sincronización de correo si está habilitada
     asyncio.create_task(background_email_worker())
@@ -501,6 +505,7 @@ async def novedades_page(
     sucursal_id: Optional[int] = None,
     user: dict = Depends(require_auth)
 ):
+    sync_cloud_pull(force=False)
     conn = get_db_connection()
     c = conn.cursor()
 
@@ -679,6 +684,9 @@ async def api_save_novedades(request: Request, payload: dict, user: dict = Depen
     if not reporte_id:
         raise HTTPException(status_code=400, detail="Falta reporte_id")
 
+    # Sincronizar de forma forzada con la base de datos de la nube antes de guardar
+    sync_cloud_pull(force=True)
+
     conn = get_db_connection()
     c = conn.cursor()
 
@@ -758,6 +766,9 @@ async def api_save_novedades(request: Request, payload: dict, user: dict = Depen
     conn.commit()
     conn.close()
 
+    # Persistir inmediatamente a la nube para que ninguna otra sucursal sobreescriba ni borre este reporte
+    sync_cloud_push(user.get("email", "gerente"))
+
     accion_txt = "ENVIO_REPORTE" if es_envio_final else "GUARDAR_BORRADOR"
     log_audit(
         user["email"], user["nombre"], user["rol"],
@@ -799,6 +810,8 @@ async def api_corte_semanal(request: Request, user: dict = Depends(require_auth)
             detail="Acceso restringido: Solo la Coordinación de Logística (Brandon) y Administradores tienen autorización para realizar el corte semanal e iniciar el nuevo ciclo."
         )
 
+    sync_cloud_pull(force=True)
+
     # Validar que el ciclo actual esté en Fase 4
     conn = get_db_connection()
     c = conn.cursor()
@@ -820,6 +833,7 @@ async def api_corte_semanal(request: Request, user: dict = Depends(require_auth)
 
     try:
         resultado = realizar_corte_semanal_logica(user)
+        sync_cloud_push(user.get("email", "brandon"))
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
@@ -890,6 +904,7 @@ async def api_brandon_send(
     c.execute("UPDATE ciclos_semanales SET estado_general = 'FASE_3_DANIA' WHERE id = ?", (ciclo_id,))
     conn.commit()
     conn.close()
+    sync_cloud_push(user.get("email", "brandon"))
 
     log_audit(
         user["email"], user["nombre"], user["rol"],
@@ -960,6 +975,7 @@ async def api_dania_deposit(
     ''', (monto, fecha_dep, ciclo_id))
     conn.commit()
     conn.close()
+    sync_cloud_push(user.get("email", "dania"))
 
     log_audit(
         user["email"], user["nombre"], user["rol"],
@@ -1101,6 +1117,7 @@ async def api_confirm_secondary_email(
         raise HTTPException(status_code=400, detail=f"Tipo de confirmación no válido: {tipo}")
 
     conn.close()
+    sync_cloud_push(user.get("email", "secundaria"))
 
     log_audit(
         user["email"], user["nombre"], user["rol"],
